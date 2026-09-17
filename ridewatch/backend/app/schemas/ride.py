@@ -1,5 +1,5 @@
 import re
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models.ride import Ride
 
 
@@ -8,6 +8,20 @@ class CreateRide(BaseModel):
     start_lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
     destination: str = Field(min_length=1, max_length=200)
     vehicle_number: str | None = Field(default=None, max_length=30)
+
+    # Optional as a complete bundle for compatibility with original text-only clients.
+    destination_lat: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    destination_lng: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    expected_distance_km: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    expected_duration_minutes: int | None = Field(default=None, gt=0, strict=True)
+
+    @model_validator(mode="after")
+    def complete_route_information(self) -> "CreateRide":
+        fields = (self.destination_lat, self.destination_lng,
+                  self.expected_distance_km, self.expected_duration_minutes)
+        if any(value is not None for value in fields) and not all(value is not None for value in fields):
+            raise ValueError("Supply all destination coordinates and route estimate fields together")
+        return self
 
     @field_validator("destination", mode="before")
     @classmethod

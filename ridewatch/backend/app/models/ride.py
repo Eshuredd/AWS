@@ -19,3 +19,7 @@ class Ride(BaseModel):
     status: RideStatus
     started_at: datetime
     ended_at: datetime | None = None
+    destination_lat: float | None = None
+    destination_lng: float | None = None
+    expected_distance_km: float | None = None
+    expected_duration_minutes: int | None = None
