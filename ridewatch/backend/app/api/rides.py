@@ -2,13 +2,14 @@ from typing import Annotated
 from uuid import UUID
 from fastapi import APIRouter, Depends, Request
 from app.schemas.ride import CreateRide, RideResponse
+from app.schemas.fare import DropLocation
 from app.services.ride_service import RideService
 
 router = APIRouter(prefix="/api/rides", tags=["rides"])
 
 
 def get_service(request: Request) -> RideService:
-    return RideService(request.app.state.ride_repository)
+    return RideService(request.app.state.ride_repository, request.app.state.fare_service)
 
 
 Service = Annotated[RideService, Depends(get_service)]
@@ -25,5 +26,5 @@ def get_ride(ride_id: UUID, service: Service):
 
 
 @router.patch("/{ride_id}/end", response_model=RideResponse)
-def end_ride(ride_id: UUID, service: Service):
-    return service.end(ride_id)
+def end_ride(ride_id: UUID, service: Service, data: DropLocation | None = None):
+    return service.end(ride_id, data)
