@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
+from app.schemas.fare import FareEstimate
 
 
 class RideStatus(StrEnum):
@@ -23,3 +24,7 @@ class Ride(BaseModel):
     destination_lng: float | None = None
     expected_distance_km: float | None = None
     expected_duration_minutes: int | None = None
+    fare_estimate: FareEstimate | None = None
+    drop_lat: float | None = None
+    drop_lng: float | None = None
+    drop_location_source: str | None = None

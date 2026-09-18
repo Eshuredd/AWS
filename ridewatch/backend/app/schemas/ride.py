@@ -1,9 +1,11 @@
 import re
+from uuid import UUID
 from pydantic import BaseModel, Field, field_validator, model_validator
 from app.models.ride import Ride
 
 
 class CreateRide(BaseModel):
+    fare_estimate_id: UUID | None = None
     start_lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
     start_lng: float = Field(ge=-180, le=180, allow_inf_nan=False)
     destination: str = Field(min_length=1, max_length=200)
@@ -21,6 +23,8 @@ class CreateRide(BaseModel):
                   self.expected_distance_km, self.expected_duration_minutes)
         if any(value is not None for value in fields) and not all(value is not None for value in fields):
             raise ValueError("Supply all destination coordinates and route estimate fields together")
+        if self.fare_estimate_id is not None and self.expected_distance_km is None:
+            raise ValueError("Fare snapshot requires route information")
         return self
 
     @field_validator("destination", mode="before")
@@ -41,4 +45,6 @@ class CreateRide(BaseModel):
 
 
 class RideResponse(Ride):
-    pass
+    # Actual historical drop coordinates are for internal matching only.
+    drop_lat: float | None = Field(default=None, exclude=True)
+    drop_lng: float | None = Field(default=None, exclude=True)
