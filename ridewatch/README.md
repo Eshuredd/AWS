@@ -163,25 +163,34 @@ Rides now store `destination_lat`, `destination_lng`, `expected_distance_km` and
 
 ## AWS configuration
 
-Backend `.env`:
+Configuration lives in `backend/.env`; a safe sample is in `backend/.env.example`:
 ```dotenv
-AWS_REGION=ap-south-1
-LOCATION_PROVIDER=aws
 CORS_ORIGINS=["http://localhost:3000"]
+AWS_PROFILE=ridewatch
+AWS_REGION=ap-south-1
+AWS_PAGER=
+LOCATION_PROVIDER=aws
 ```
+Pydantic Settings loads this file automatically regardless of working directory. Process variables take precedence. The lazy boto3 session explicitly uses the configured profile and region. Omit `AWS_PROFILE` to use the normal credential chain; omit `AWS_REGION` to use SDK region resolution. Only `LOCATION_PROVIDER=aws` is supported.
 
-Mumbai is the default region; see [AWS regional endpoints](https://docs.aws.amazon.com/general/latest/gr/location.html). If you change regions, update the IAM ARNs below. Normal runs accept only `LOCATION_PROVIDER=aws`; there is no silent fake fallback.
+Keep credentials in standard AWS files (`$HOME/.aws/credentials` and `$HOME/.aws/config`), SSO, or workload credentials. Never add access keys, secret keys or session tokens to `.env`. If using SSO, configure your profile externally and refresh with `aws sso login --profile ridewatch` when required.
 
-Supply backend credentials through the standard boto3 credential chain: an existing profile (including SSO), externally supplied temporary credentials, or an attached IAM role. No credentials or AWS SDK belong in the frontend. For an existing SSO profile named `ridewatch`, run in the backend terminal:
-
+From the project root, start the backend:
 ```powershell
-aws sso login --profile ridewatch
-$env:AWS_PROFILE = "ridewatch"
-$env:AWS_REGION = "ap-south-1"
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\scripts\start-backend.ps1
 ```
+This loads `backend/.env` and runs the backend virtual environment's `python -m uvicorn app.main:app --reload --port 8000`. Direct Uvicorn startup also loads application settings automatically.
 
-If no profile exists, configure one externally with `aws configure sso --profile ridewatch` using your account's SSO details. Export `AWS_PROFILE` in the shell; it is not an application `.env` setting. Existing default profiles or workload roles need no profile override.
+For manual AWS CLI commands, dot-source this once per new PowerShell terminal:
+```powershell
+. .\scripts\load-env.ps1
+$env:AWS_PROFILE
+$env:AWS_REGION
+$env:AWS_PAGER
+```
+Expected values: `ridewatch`, `ap-south-1`, and empty. You no longer need the three individual assignments. Python cannot modify its parent terminal, so manual CLI use still needs the helper. It supports blank lines, full-line comments, normal assignments, empty values and matching outer quotes, without executing or expanding values. Older PowerShell/.NET may remove empty variables; use `aws ... --no-cli-pager` if the CLI still enables its configured/default pager.
+
+Copy the example to `.env` if absent; preserve existing customizations. `.env` is ignored by Git. If you change regions, update the IAM ARNs below.
 
 The backend identity needs these permissions, attached through IAM or its SSO permission set:
 

@@ -14,8 +14,10 @@ _PROVIDER_ERRORS = (BotoCoreError, ClientError, KeyError, IndexError, TypeError,
 
 class AmazonLocationProvider(LocationProvider):
     """Current Places/Routes APIs. Clients initialize lazily; health needs no credentials."""
-    def __init__(self, region: str, *, places_client: Any = None, routes_client: Any = None) -> None:
+    def __init__(self, region: str | None, *, profile: str | None = None, places_client: Any = None, routes_client: Any = None) -> None:
         self.region = region
+        self.profile = profile
+        self._session = None
         self._clients: dict[str, Any] = {}
         if places_client is not None:
             self._clients["geo-places"] = places_client
@@ -26,8 +28,15 @@ class AmazonLocationProvider(LocationProvider):
     def _client(self, service: str) -> Any:
         with self._lock:
             if service not in self._clients:
-                self._clients[service] = boto3.session.Session().client(
-                    service, region_name=self.region,
+                if self._session is None:
+                    if self.profile:
+                        self._session = boto3.session.Session(
+                            profile_name=self.profile, region_name=self.region,
+                        )
+                    else:
+                        self._session = boto3.session.Session(region_name=self.region)
+                self._clients[service] = self._session.client(
+                    service,
                     config=Config(connect_timeout=3, read_timeout=5,
                                   retries={"mode": "standard", "total_max_attempts": 2}),
                 )

@@ -17,7 +17,7 @@ def create_app(repository: RideRepository | None = None, location_provider: Loca
     application.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["GET", "POST", "PATCH"], allow_headers=["Content-Type"])
     application.include_router(router)
     application.include_router(location_router)
-    application.state.location_provider = location_provider if location_provider is not None else AmazonLocationProvider(settings.aws_region)
+    application.state.location_provider = location_provider if location_provider is not None else AmazonLocationProvider(settings.aws_region, profile=settings.aws_profile)
 
     @application.exception_handler(LocationError)
     async def location_error(request: Request, error: LocationError) -> JSONResponse:
