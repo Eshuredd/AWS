@@ -1,9 +1,11 @@
 from pathlib import Path
 from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
+    route_estimate_max_age_seconds: int = Field(default=300, gt=0)
     aws_profile: str | None = None
     aws_region: str | None = None
     aws_pager: str = ""

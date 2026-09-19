@@ -3,6 +3,7 @@ from enum import StrEnum
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 from app.schemas.fare import FareEstimate
+from app.schemas.location import RouteEstimate
 
 
 class RideStatus(StrEnum):
@@ -25,6 +26,8 @@ class Ride(BaseModel):
     expected_distance_km: float | None = None
     expected_duration_minutes: int | None = None
     fare_estimate: FareEstimate | None = None
+    route_estimate_id: UUID | None = None
+    expected_route: RouteEstimate | None = None
     drop_lat: float | None = None
     drop_lng: float | None = None
     drop_location_source: str | None = None

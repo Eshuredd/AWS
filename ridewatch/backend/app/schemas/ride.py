@@ -1,10 +1,12 @@
 import re
 from uuid import UUID
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from app.models.ride import Ride
 
 
 class CreateRide(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    route_estimate_id: UUID | None = None
     fare_estimate_id: UUID | None = None
     start_lat: float = Field(ge=-90, le=90, allow_inf_nan=False)
     start_lng: float = Field(ge=-180, le=180, allow_inf_nan=False)

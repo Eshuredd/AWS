@@ -13,9 +13,11 @@ from app.fares.base import FareProvider
 from app.fares.telangana import TelanganaFareProvider
 from app.repositories.fare_report_repository import FareReportRepository, InMemoryFareReportRepository, DuplicateFareReport
 from app.services.fare_service import FareService, FareError
+from app.services.route_service import RouteService, utc_now
+from app.services.monitoring_service import MonitoringService, MonitoringRules
 
 
-def create_app(repository: RideRepository | None = None, location_provider: LocationProvider | None = None, fare_repository: FareReportRepository | None = None, fare_provider: FareProvider | None = None) -> FastAPI:
+def create_app(repository: RideRepository | None = None, location_provider: LocationProvider | None = None, fare_repository: FareReportRepository | None = None, fare_provider: FareProvider | None = None, clock=utc_now, monitoring_rules=MonitoringRules()) -> FastAPI:
     settings = Settings()
     application = FastAPI(title="RideWatch API", version="0.1.0")
     application.state.ride_repository = repository if repository is not None else InMemoryRideRepository()
@@ -25,6 +27,9 @@ def create_app(repository: RideRepository | None = None, location_provider: Loca
     application.include_router(router)
     application.include_router(location_router)
     application.state.location_provider = location_provider if location_provider is not None else AmazonLocationProvider(settings.aws_region, profile=settings.aws_profile)
+    application.state.clock = clock
+    application.state.route_service = RouteService(application.state.location_provider, clock, settings.route_estimate_max_age_seconds)
+    application.state.monitoring_service = MonitoringService(application.state.ride_repository, clock, monitoring_rules)
 
     @application.exception_handler(FareError)
     async def fare_error(request: Request, error: FareError):

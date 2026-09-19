@@ -6,7 +6,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from app.location.base import LocationProvider, SearchUnavailable, RouteUnavailable
-from app.schemas.location import PlaceResult, RouteEstimate
+from app.schemas.location import PlaceResult, RouteEstimate, RoutePoint
 
 logger = logging.getLogger(__name__)
 _PROVIDER_ERRORS = (BotoCoreError, ClientError, KeyError, IndexError, TypeError, ValueError)
@@ -79,13 +79,24 @@ class AmazonLocationProvider(LocationProvider):
             response = self._client("geo-routes").calculate_routes(
                 Origin=[start_lng, start_lat], Destination=[destination_lng, destination_lat],
                 TravelMode="Car", OptimizeRoutingFor="FastestRoute", MaxAlternatives=0,
+                DepartNow=True, Traffic={"Usage": "UseTrafficData"}, LegGeometryFormat="Simple",
             )
             summary = response["Routes"][0]["Summary"]
             distance = float(summary["Distance"])
             duration = float(summary["Duration"])
             if not math.isfinite(duration) or duration <= 0:
                 raise ValueError("Nonpositive or nonfinite duration")
-            return RouteEstimate(distance_km=distance / 1000, duration_minutes=math.ceil(duration / 60))
+            geometry = []
+            for leg in response["Routes"][0]["Legs"]:
+                points = [RoutePoint(longitude=lng, latitude=lat) for lng, lat in leg["Geometry"]["LineString"]]
+                if len(points) < 2:
+                    raise ValueError("Unusable route geometry")
+                if geometry and geometry[-1] != points[0]:
+                    raise ValueError("Disconnected route geometry")
+                geometry.extend(points[1:] if geometry else points)
+            if len(set((p.latitude, p.longitude) for p in geometry)) < 2:
+                raise ValueError("Unusable route geometry")
+            return RouteEstimate(distance_km=distance / 1000, duration_minutes=math.ceil(duration / 60), duration_seconds=duration, route_geometry=tuple(geometry), traffic_aware=True)
         except _PROVIDER_ERRORS as error:
             self._log_failure("CalculateRoutes", error)
             raise RouteUnavailable() from error

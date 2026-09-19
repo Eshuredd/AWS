@@ -5,8 +5,9 @@ export type Ride = {
   vehicle_number: string | null; status: "ACTIVE" | "COMPLETED";
   started_at: string; ended_at: string | null;
   fare_estimate: FareEstimate | null;
+  expected_route: RouteEstimate | null;
 };
-export type CreateRide = Pick<Ride, "start_lat" | "start_lng" | "destination" | "vehicle_number"> & { destination_lat: number; destination_lng: number; expected_distance_km: number; expected_duration_minutes: number; fare_estimate_id?: string };
+export type CreateRide = Pick<Ride, "start_lat" | "start_lng" | "destination" | "vehicle_number"> & { destination_lat: number; destination_lng: number; expected_distance_km: number; expected_duration_minutes: number; fare_estimate_id?: string; route_estimate_id?: string };
 const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
@@ -38,7 +39,7 @@ export const validVehicle = (value: string) => !value || /^(?:[A-Z]{2}[0-9]{1,2}
 
 export type Coordinates = { latitude: number; longitude: number };
 export type Place = Coordinates & { id: string | null; label: string };
-export type RouteEstimate = { distance_km: number; duration_minutes: number };
+export type RouteEstimate = { distance_km: number; duration_minutes: number; duration_seconds: number; route_estimate_id: string; calculated_at: string; expires_at: string; traffic_aware: boolean; route_geometry: Coordinates[] };
 export function searchPlaces(query: string, location: Coordinates | null, signal: AbortSignal) {
   const params = new URLSearchParams({ q: query });
   if (location) { params.set("lat", String(location.latitude)); params.set("lng", String(location.longitude)); }
@@ -66,10 +67,19 @@ export type FareEstimate = {
 };
 export type DropLocation = { drop_location_source: "DESTINATION_FALLBACK" } | { drop_location_source: "GPS"; drop_lat: number; drop_lng: number };
 export function estimateFare(start: Coordinates, destination: Coordinates, route: RouteEstimate, signal: AbortSignal) {
-  return request<FareEstimate>("/api/fare-estimate", { method: "POST", signal, body: JSON.stringify({ ...route,
+  return request<FareEstimate>("/api/fare-estimate", { method: "POST", signal, body: JSON.stringify({ distance_km: route.distance_km, duration_minutes: route.duration_minutes,
     start_lat: start.latitude, start_lng: start.longitude, destination_lat: destination.latitude, destination_lng: destination.longitude,
   }) });
 }
+export type Monitoring = {
+  ride_id: string; gps_status: "WAITING" | "GOOD" | "POOR" | "STALE" | "UNAVAILABLE";
+  route_status: "UNKNOWN" | "ON_ROUTE" | "POSSIBLE_DEVIATION" | "DEVIATED";
+  stop_status: "UNKNOWN" | "MOVING" | "PROLONGED_STOP";
+  delay_status: "UNKNOWN" | "ON_TIME" | "DELAYED";
+  distance_from_route_m: number | null; last_updated_at: string | null;
+};
+export const sendLocation = (id: string, data: Coordinates & { accuracy_m: number }, signal: AbortSignal) => request<Monitoring>(`/api/rides/${encodeURIComponent(id)}/locations`, { method: "POST", body: JSON.stringify(data), signal });
+export const getMonitoring = (id: string, signal: AbortSignal) => request<Monitoring>(`/api/rides/${encodeURIComponent(id)}/monitoring`, { signal });
 export const reportFare = (id: string, fare_paid: number) => request<{ ride_id: string; fare_paid: number; reported_at: string }>(`/api/rides/${encodeURIComponent(id)}/fare-report`, { method: "POST", body: JSON.stringify({ fare_paid }) });
 export function captureDropLocation(): Promise<DropLocation> {
   return new Promise(resolve => {

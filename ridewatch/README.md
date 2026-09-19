@@ -5,7 +5,7 @@ Booking-independent ride safety companion for India.
 ## Problem and current MVP
 Street-hailed autos, local taxis and directly negotiated rides often happen outside booking apps. RideWatch records a starting point, destination and optional vehicle number before getting in.
 
-This MVP includes browser geolocation with error handling, normalized vehicle numbers, Amazon Location destination search and road estimates, and creating, viewing and completing ride sessions. Monitoring sections are placeholders: no tracking, alerts or emergency response runs. Auto fare estimation separates the official Telangana meter estimate from aggregated fares reported after completed rides.
+This MVP includes browser geolocation with error handling, normalized vehicle numbers, Amazon Location destination search and traffic-aware road estimates, and creating, viewing and completing ride sessions. Active rides with validated route quotes include live GPS monitoring for deviation, prolonged stops and excessive delay. These are informational signals, not emergency response. Auto fare estimation separates the official Telangana meter estimate from aggregated fares reported after completed rides.
 
 ## Architecture
 Next.js App Router + TypeScript + Tailwind CSS → FastAPI routes → RideService → RideRepository → InMemoryRideRepository.
@@ -85,7 +85,7 @@ Open http://localhost:3000. API docs: http://localhost:8000/docs. Environment co
 
 On macOS/Linux use `python3`, `.venv/bin/python`, `cp`, and `npm` for their Windows equivalents.
 
-Geolocation needs browser permission and a secure context; localhost works. HTTP LAN addresses on phones generally do not. Location is requested on the starting-location button and when ending a ride. It is sent to the backend for search bias, routing and ride creation. Search and route requests forward relevant coordinates to Amazon Location Service.
+Geolocation needs browser permission and a secure context; localhost works. HTTP LAN addresses on phones generally do not. Location is requested on the starting-location button, via watchPosition while a monitored active ride page is open, and when ending a ride. It is sent to the backend for search bias, routing and ride creation. Search and route requests forward relevant coordinates to Amazon Location Service.
 
 `NEXT_PUBLIC_API_URL` configures the browser API URL; restart/rebuild after changing it. `CORS_ORIGINS` is a JSON array of frontend origins, defaulting to localhost:3000. Never put secrets in public frontend variables.
 
@@ -113,7 +113,9 @@ Tests cover health, create/fetch, missing rides, completion and repeated complet
 |---|---|---|
 | GET | `/health` | Service health |
 | GET | `/api/places/search?q=station&lat=17.44&lng=78.49` | Up to five resolved Indian destinations |
-| POST | `/api/route-estimate` | Distance in km and duration in minutes |
+| POST | `/api/route-estimate` | Traffic-aware quote, geometry, duration and expiry |
+| POST | `/api/rides/{ride_id}/locations` | Accept GPS sample and return aggregate monitoring |
+| GET | `/api/rides/{ride_id}/monitoring` | Current aggregate state, no GPS trail |
 | POST | `/api/fare-estimate` | Official and optional aggregated reported fares |
 | POST | `/api/rides/{ride_id}/fare-report` | Optional completed-ride fare report (201; duplicate 409) |
 | POST | `/api/rides` | Create ACTIVE ride (201) |
@@ -137,7 +139,7 @@ Vehicle number may be omitted or null. Format checks accept conventional and Bha
 
 Later deployment will add a Lambda ASGI adapter/handler, a DynamoDB repository and environment-specific CORS. In-memory storage is unsuitable for Lambda persistence. No cloud resources or deployment are implemented; Amazon Location is integrated through backend calls.
 
-Later increments include GPS tracking, deviation/stop/delay detection, OCR, trusted contacts and emergency escalation. Authentication and persistence remain future work.
+Later increments include OCR, trusted contacts and SOS/emergency escalation. Authentication and persistence remain future work.
 
 ## Real route estimation
 
@@ -159,9 +161,9 @@ Search waits 400 ms after typing at least three characters and returns up to fiv
 
 The backend uses current boto3 `geo-places` and `geo-routes` clients. [SearchText](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-places/client/search_text.html) resolves text directly to coordinates; no additional GetPlace or Geocode call is needed. Search uses `IncludeCountries=["IND"]`, optional location bias, and `IntendedUse="Storage"` because selected destination data is retained in ride sessions.
 
-[CalculateRoutes](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-routes/client/calculate_routes.html) uses `TravelMode="Car"`, `OptimizeRoutingFor="FastestRoute"` and no alternatives or extra features. AWS coordinates are longitude first. Summary meters become kilometers; seconds round up to minutes. Zero-length/unusable routes produce a safe error. Car routes may differ from auto-rickshaw routes. Values are estimates, not guarantees.
+[CalculateRoutes](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-routes/client/calculate_routes.html) uses `TravelMode="Car"`, `OptimizeRoutingFor="FastestRoute"`, `MaxAlternatives=0`, `DepartNow=True`, `Traffic={"Usage": "UseTrafficData"}` and `LegGeometryFormat="Simple"`. AWS coordinates are longitude first. Summary meters become kilometers; seconds round up to minutes. Exact seconds and road geometry are preserved for monitoring. Zero-length/unusable routes produce a safe error. Car routes may differ from auto-rickshaw routes. Values are estimates, not guarantees.
 
-Rides now store `destination_lat`, `destination_lng`, `expected_distance_km` and `expected_duration_minutes`. Coordinates must be in range, distance finite and positive, and duration a positive integer. Older API clients may omit all four; partial bundles are rejected. The updated UI always sends the full bundle. These client-submitted values are validated informational snapshots, not signed or independently recalculated during ride creation. Completion now also stores a GPS drop or destination fallback, and rides retain a fare snapshot.
+Rides store `destination_lat`, `destination_lng`, `expected_distance_km` and `expected_duration_minutes`. Coordinates must be in range, distance finite and positive, and duration a positive integer. Older API clients may omit all four; partial bundles are rejected. The updated UI sends the full bundle and `route_estimate_id`, validated against the exact server quote. Legacy rides without a quote retain informational route fields but cannot enable monitoring. Completion stores a GPS drop or destination fallback, and rides retain an immutable fare snapshot.
 
 ## AWS configuration
 
@@ -222,7 +224,7 @@ Run the pytest command above. Tests inject `FakeLocationProvider` through `creat
 
 Clients initialize lazily, so startup and `/health` work without credentials. Search/route failures return sanitized 503 messages; logs contain only operation and exception class, not credentials, destinations or raw AWS exception text. No fake success response replaces a failed AWS call.
 
-Verified locally: backend tests, frontend lint/typecheck/build, and a mobile Chromium flow with intercepted test API responses covering debounce, selection, stale search cancellation, retries, ride creation and completion. Live search results, route availability/accuracy, account permissions and AWS connectivity have not been verified with real credentials. After setup, allow geolocation at localhost:3000, select a destination, check the estimate, start the ride and end it. Nothing has been deployed.
+Verified locally: backend tests, frontend lint/typecheck/build, and a mobile Chromium flow with intercepted test API responses covering debounce, selection, stale search cancellation, retries, ride creation and completion. Places and Routes were previously manually verified with real credentials by the project owner. This increment is verified offline; the new traffic/geometry request should also be manually checked with the existing profile. After setup, allow geolocation at localhost:3000, select a destination, check the estimate, start the ride and end it. Nothing has been deployed.
 
 
 ## Fare estimation
@@ -284,3 +286,79 @@ Better typical fare estimate
 For production scale, replace full Haversine scans with H3 or another geospatial index: exact coordinates → geospatial cell → pickup cell / destination cell → aggregated fare statistics. H3, DynamoDB, ML, booking-app scraping and deployment are deliberately not included.
 
 Fare tests run fully offline with fixed coordinates and synthetic test fixtures, never seeded into the application. `backend/tests/test_fares.py` covers tariff/timezone boundaries, validation, Haversine, both tiers, distance tolerance, percentiles, IQR, report lifecycle, concurrency and immutable snapshots. Existing AWS fake-provider/Stubber tests remain in place.
+
+## Traffic-aware live monitoring
+
+Amazon Simple LineStrings are converted from **[longitude, latitude]** into named latitude/longitude objects. Adjoining legs share one endpoint, which is not duplicated. Empty, invalid, degenerate or disconnected geometry returns a sanitized 503 instead of inventing a road segment.
+
+Route quotes contain `route_estimate_id`, `calculated_at`, `expires_at`, `traffic_aware`, `route_geometry`, `distance_km`, `duration_minutes`, and `duration_seconds`. They are held in memory and copied into the ride as `expected_route`. Ride creation validates the opaque ID against both endpoints and displayed distance/duration. Forged geometry or other unexpected create fields return 422. Expired, missing or mismatched quotes return 409 with a refresh message. The browser automatically refreshes quotes within 10 seconds of expiry before starting and refreshes the fare quote alongside them. Fare snapshots remain immutable; route duration is never charged as waiting time. Old clients can create rides without a quote, but live monitoring is unavailable for them.
+
+`ROUTE_ESTIMATE_MAX_AGE_SECONDS=300` configures quote freshness in `backend/.env`. Expiry is inclusive at 300 seconds. Existing rides keep their baseline even after the quote expires; AWS is not called continuously during rides. Current traffic can change after departure, and legitimate detours, congestion and GPS errors can produce misleading signals.
+
+### Sampling and thresholds
+
+`backend/app/services/monitoring_service.py` defines the injectable `MonitoringRules` dataclass:
+
+| Rule | Default |
+|---|---|
+| Browser and server accepted-update interval | At least 5 seconds; first sample immediately |
+| Input accuracy | Finite, greater than 0 and at most 10,000 m |
+| Good GPS | Accuracy ≤100 m |
+| Off-route threshold | Minimum segment distance >150 m + reported accuracy |
+| Deviation confirmation | 3 consecutive good off-route samples |
+| Recovery from deviation | 2 consecutive good on-route samples |
+| Stop movement radius | Less than 30 m from a stationary anchor |
+| Prolonged stop | At least 180 seconds of reliable stationary readings |
+| Stop-specific accuracy | ≤30 m; worse readings cannot prove lack of movement |
+| Maximum reliable sample gap | 30 seconds; longer gaps reset accumulated evidence |
+| Excessive delay | Elapsed seconds > exact traffic duration ×1.5 +300 seconds |
+| Recent internal sample buffer | At most 60 good samples per active ride |
+
+Route distance is the minimum distance to **segments**, not vertices, of the actual Amazon road polyline, using a local equirectangular projection centered on the GPS sample. This approximation is intended for city-scale routes, not polar or worldwide paths. A first off-route point produces POSSIBLE_DEVIATION, not DEVIATED. Poor GPS resets consecutive evidence and reports POOR/UNKNOWN, not a safety incident. Movement of at least 30 m resets the stop anchor and clears a stop; missing or imprecise samples cannot count toward the stop timer. MOVING means no prolonged stop has been established, not proof of continuous movement.
+
+`POST /api/rides/{id}/locations` accepts only `{ "latitude": 17.44, "longitude": 78.50, "accuracy_m": 10 }`. The backend assigns receipt time; client timestamps are rejected. Samples arriving faster than 5 seconds return the current aggregate without changing evidence. Unknown rides return 404; completed rides and legacy rides without validated geometry return 409. Malformed/nonfinite/out-of-range fields return 422. The response contains only `ride_id`, `gps_status`, `route_status`, `distance_from_route_m`, `stop_status`, `delay_status`, and `last_updated_at`. There is no trail endpoint. `GET /api/rides/{id}/monitoring` recalculates elapsed delay and marks old GPS STALE; completed rides return 409.
+
+The UI uses one `navigator.geolocation.watchPosition` with high accuracy, maximumAge=5000 and timeout=10000, and permits only one location request in flight. It polls aggregate monitoring every 10 seconds so delay and stale readings remain visible when GPS is silent; this does not call AWS. Permission denial, unsupported browsers, timeout, poor signal and backend errors leave the ride active and offer restart. Ending a ride first unmounts the watcher and aborts pending sends; completion failure restarts monitoring. Existing bounded GPS drop capture, destination fallback and optional fare reporting remain intact. Navigating away also clears the watcher.
+
+Keep the active page open, with location permission enabled, over localhost or HTTPS. Mobile browsers may suspend GPS in the background or when the screen locks. This is not background tracking and not an emergency guarantee. There is no SOS, calling, push notification, trusted-contact integration or automatic rerouting. A map visualization is future work; geometry is available for it.
+
+### Privacy and storage
+
+Quotes, ride snapshots, monitoring state and the bounded recent GPS buffer exist **only in process memory**. Monitoring buffers are cleared on ride completion; everything disappears on backend restart. Use one backend worker. Precise live coordinates are not logged, saved to disk, or sent to other services. Only necessary search/routing coordinates go to Amazon Location. Monitoring endpoints return aggregates, never historical coordinate lists. The existing ride-detail API still exposes pickup/destination to anyone with a ride ID: this unauthenticated local prototype is not production access control.
+
+Production requires authentication/authorization, explicit consent, retention rules, encryption, access controls and deletion policies. DynamoDB, deployment, SOS and trusted contacts remain future work.
+
+### Repeatable offline verification
+
+From `backend`, run `.\.venv\Scripts\python.exe -m pytest -q`. The test clock advances directly, without sleeping or real AWS calls. Stubber verifies AWS traffic/geometry parameters and coordinate ordering; monitoring tests cover segment distance, confirmation/recovery, uncertainty, stop/resume/gaps, delay boundaries, quote attachment/expiry/mismatch, tampering, validation and completion cleanup. `tzdata` supplies Kolkata timezone data on Windows for the existing fare tests.
+
+From `frontend`:
+
+```powershell
+npm.cmd ci
+npx.cmd playwright install chromium
+npm.cmd test
+npm.cmd run lint
+npm.cmd run typecheck
+npm.cmd run build
+```
+
+Playwright starts an isolated frontend on port 3100, intercepts API calls and simulates browser GPS. Tests cover stale quote refresh, destination search → fare → start → GPS state → end → fare report, poor GPS, permission denial, restart/unmount cleanup, send throttling, network failure and late-response cancellation. No physical driving or AWS credentials are needed. Test reports contain synthetic fixtures only.
+
+### Manual check with the existing AWS profile
+
+Preserve the existing `backend/.env` (`AWS_PROFILE=ridewatch`). In two PowerShell terminals:
+
+```powershell
+cd C:\Users\eshum\OneDrive\Desktop\AWS\ridewatch
+.\backend\.venv\Scripts\python.exe -m pip install -r .\backend\requirements.txt
+.\scripts\start-backend.ps1
+```
+
+```powershell
+cd C:\Users\eshum\OneDrive\Desktop\AWS\ridewatch\frontend
+npm.cmd ci
+npm.cmd run dev
+```
+
+Open http://localhost:3000, allow location, select a destination, check traffic-aware distance/duration and fare, then START RIDE. Keep the page open and check GPS/route/movement/timing and the latest update time. Browser developer tools can simulate a location on the returned route or three off-route readings separated by at least five seconds; no driving is required. END RIDE and submit or skip the fare. Denying location should show monitoring unavailable without ending the ride. For an SSO profile only, refresh its session separately using `aws sso login --profile ridewatch` if necessary. The new traffic/geometry request has been tested offline and should also be manually checked with the existing profile. No deployment, commit or push is part of this increment.

@@ -25,5 +25,5 @@ def search_places(provider: Provider, q: Annotated[str, Query(min_length=3, max_
 
 
 @router.post("/route-estimate", response_model=RouteEstimate)
-def route_estimate(data: RouteRequest, provider: Provider) -> RouteEstimate:
-    return provider.calculate_route(**data.model_dump())
+def route_estimate(data: RouteRequest, request: Request) -> RouteEstimate:
+    return request.app.state.route_service.estimate(data)

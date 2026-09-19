@@ -26,7 +26,7 @@ class FakeLocationProvider(LocationProvider):
         self.route_calls.append((start_lat, start_lng, destination_lat, destination_lng))
         if self.fail:
             raise RouteUnavailable()
-        return RouteEstimate(distance_km=9.2, duration_minutes=31)
+        return RouteEstimate(distance_km=9.2, duration_minutes=31, duration_seconds=1801, traffic_aware=True, route_geometry=[{"latitude": start_lat, "longitude": start_lng}, {"latitude": destination_lat, "longitude": destination_lng}])
 
 
 @pytest.fixture
@@ -66,7 +66,10 @@ def test_search_invalid(client, provider, params):
 def test_route_success(client, provider, coordinates):
     response = client.post("/api/route-estimate", json=coordinates)
     assert response.status_code == 200
-    assert response.json() == {"distance_km": 9.2, "duration_minutes": 31}
+    assert response.json()["distance_km"] == 9.2
+    assert response.json()["duration_minutes"] == 31
+    assert response.json()["route_estimate_id"]
+    assert response.json()["traffic_aware"]
     assert provider.route_calls == [(17.44, 78.49, 17.433, 78.501)]
 
 
@@ -138,9 +141,14 @@ def test_aws_empty_search(response):
 def test_aws_route_contract():
     sdk = sdk_client("geo-routes")
     with Stubber(sdk) as stub:
-        stub.add_response("calculate_routes", {"LegGeometryFormat": "Simple", "Notices": [], "PricingBucket": "test", "Routes": [{"Summary": {"Distance": 9200, "Duration": 1801}, "Legs": [], "MajorRoadLabels": []}]}, {"Origin": [78.49, 17.44], "Destination": [78.501, 17.433], "TravelMode": "Car", "OptimizeRoutingFor": "FastestRoute", "MaxAlternatives": 0})
+        stub.add_response("calculate_routes", {"LegGeometryFormat": "Simple", "Notices": [], "PricingBucket": "test", "Routes": [{"Summary": {"Distance": 9200, "Duration": 1801}, "Legs": [{"Geometry": {"LineString": [[78.49, 17.44], [78.501, 17.433]]}, "TravelMode": "Car", "Type": "Vehicle"}], "MajorRoadLabels": []}]}, {"Origin": [78.49, 17.44], "Destination": [78.501, 17.433], "TravelMode": "Car", "OptimizeRoutingFor": "FastestRoute", "MaxAlternatives": 0, "DepartNow": True, "Traffic": {"Usage": "UseTrafficData"}, "LegGeometryFormat": "Simple"})
         provider = AmazonLocationProvider("ap-south-1", routes_client=sdk)
-        assert provider.calculate_route(17.44, 78.49, 17.433, 78.501).model_dump() == {"distance_km": 9.2, "duration_minutes": 31}
+        result = provider.calculate_route(17.44, 78.49, 17.433, 78.501)
+        assert result.distance_km == 9.2
+        assert result.duration_minutes == 31
+        assert result.duration_seconds == 1801
+        assert result.traffic_aware
+        assert [(p.longitude, p.latitude) for p in result.route_geometry] == [(78.49, 17.44), (78.501, 17.433)]
         stub.assert_no_pending_responses()
 
 
@@ -180,3 +188,21 @@ def test_startup_does_not_load_aws_credentials(monkeypatch):
     monkeypatch.setattr(boto3.session, "Session", forbidden)
     with TestClient(create_app()) as client:
         assert client.get("/health").status_code == 200
+
+
+@pytest.mark.parametrize("legs", [[], [{"Geometry": {"LineString": []}}], [{"Geometry": {"LineString": [[78, 17]]}}], [{"Geometry": {"LineString": [[78, 17], [78, 17]]}}], [{"Geometry": {"LineString": [[78, 17], [78, 91]]}}], [{"Geometry": {"LineString": [[78, 17], [float("nan"), 17]]}}]])
+def test_invalid_geometry(legs):
+    sdk = Mock()
+    sdk.calculate_routes.return_value = {"Routes": [{"Summary": {"Distance": 100, "Duration": 60}, "Legs": legs}]}
+    with pytest.raises(RouteUnavailable):
+        AmazonLocationProvider("ap-south-1", routes_client=sdk).calculate_route(17, 78, 18, 79)
+
+
+def test_join_multiple_legs():
+    sdk = Mock()
+    sdk.calculate_routes.return_value = {"Routes": [{"Summary": {"Distance": 100, "Duration": 60}, "Legs": [{"Geometry": {"LineString": [[78, 17], [78.1, 17.1]]}}, {"Geometry": {"LineString": [[78.1, 17.1], [78.2, 17.2]]}}]}]}
+    provider = AmazonLocationProvider("ap-south-1", routes_client=sdk)
+    assert len(provider.calculate_route(17, 78, 17.2, 78.2).route_geometry) == 3
+    sdk.calculate_routes.return_value["Routes"][0]["Legs"][1]["Geometry"]["LineString"][0] = [79, 18]
+    with pytest.raises(RouteUnavailable):
+        provider.calculate_route(17, 78, 17.2, 78.2)

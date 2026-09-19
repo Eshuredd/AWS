@@ -1,0 +1,142 @@
+import { test, expect, type Page } from "@playwright/test";
+import { startTracking } from "../lib/live-tracking";
+import type { Monitoring } from "../lib/api";
+
+test("watcher throttles, handles failures, and aborts on cleanup", async () => {
+  let success!: PositionCallback;
+  let failure!: PositionErrorCallback;
+  let cleared = false;
+  let time = 0;
+  let sent = 0;
+  let signal: AbortSignal | undefined;
+  const errors: string[] = [];
+  const geolocation = {
+    watchPosition(onSuccess: PositionCallback, onError: PositionErrorCallback, options: PositionOptions) {
+      success = onSuccess; failure = onError;
+      expect(options).toEqual({ enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+      return 42;
+    }, clearWatch(id: number) { expect(id).toBe(42); cleared = true; },
+  } as Geolocation;
+  const stop = startTracking({ geolocation, now: () => time, onState: () => {}, onError: value => errors.push(value),
+    send: async (sample, nextSignal) => { expect(sample).toEqual({ latitude: 17, longitude: 78, accuracy_m: 10 }); sent++; signal = nextSignal; throw new Error("offline"); } });
+  const position = { coords: { latitude: 17, longitude: 78, accuracy: 10 } } as GeolocationPosition;
+  await success(position);
+  await success(position);
+  expect(sent).toBe(1);
+  time = 5000;
+  await success(position);
+  expect(sent).toBe(2);
+  failure({ code: 1 } as GeolocationPositionError);
+  expect(errors.at(-1)).toContain("Permission denied");
+  failure({ code: 3 } as GeolocationPositionError);
+  expect(errors.at(-1)).toContain("timed out");
+  stop();
+  expect(cleared).toBe(true);
+  expect(signal?.aborted).toBe(true);
+  time = 10000;
+  await success(position);
+  expect(sent).toBe(2);
+});
+
+test("watcher ignores late responses and handles missing browser support", async () => {
+  let success!: PositionCallback;
+  let resolve!: (value: Monitoring) => void;
+  let states = 0;
+  const stop = startTracking({ geolocation: { watchPosition(callback: PositionCallback) { success = callback; return 1; }, clearWatch() {}, getCurrentPosition() {} },
+    send: () => new Promise<Monitoring>(done => { resolve = done; }), onState: () => { states++; }, onError: () => {} });
+  const pending = success({ coords: { latitude: 17, longitude: 78, accuracy: 10 } } as GeolocationPosition);
+  stop(); resolve({} as Monitoring); await pending;
+  expect(states).toBe(0);
+  let error = "";
+  startTracking({ send: async () => ({} as Monitoring), onState: () => {}, onError: value => { error = value; } });
+  expect(error).toContain("no geolocation support");
+});
+
+async function mockApp(page: Page, expired = false) {
+  await page.addInitScript(() => {
+    const control: { starts: number; clears: number; emit: (accuracy: number) => void; fail: (code: number) => void } = { starts: 0, clears: 0, emit: () => {}, fail: () => {} };
+    Object.assign(window, { gpsTest: control });
+    Object.defineProperty(navigator, "geolocation", { value: {
+      getCurrentPosition(success: PositionCallback) { success({ coords: { latitude: 17.44, longitude: 78.49, accuracy: 10 } } as GeolocationPosition); },
+      watchPosition(success: PositionCallback, failure: PositionErrorCallback) {
+        control.starts++;
+        control.emit = (accuracy: number) => success({ coords: { latitude: 17.44, longitude: 78.50, accuracy } } as GeolocationPosition);
+        control.fail = (code: number) => failure({ code } as GeolocationPositionError);
+        return control.starts;
+      }, clearWatch() { control.clears++; },
+    } });
+  });
+  let routes = 0;
+  let updates = 0;
+  let ride: Record<string, unknown> = {};
+  const fare = { estimate_id: "fare-1", supported: true, currency: "INR", official_meter: { minimum: 104, maximum: 104, source: "Telangana", effective_from: "2014-02-14", night_applied: false }, typical_reported: null };
+  let routeQuote: Record<string, unknown>;
+  await page.route("http://localhost:8000/**", async handler => {
+    const request = handler.request();
+    const path = new URL(request.url()).pathname;
+    let body: unknown;
+    if (path === "/api/places/search") body = { results: [{ id: "place", label: "Test Station", latitude: 17.44, longitude: 78.51 }] };
+    else if (path === "/api/route-estimate") {
+      routes++;
+      routeQuote = { route_estimate_id: `route-${routes}`, distance_km: 9.2, duration_minutes: 31, duration_seconds: 1801, traffic_aware: true, calculated_at: new Date().toISOString(), expires_at: new Date(Date.now() + (expired && routes === 1 ? -1 : 300000)).toISOString(), route_geometry: [{ latitude: 17.44, longitude: 78.49 }, { latitude: 17.44, longitude: 78.51 }] };
+      body = routeQuote;
+    } else if (path === "/api/fare-estimate") body = fare;
+    else if (path === "/api/rides") {
+      expect(request.postDataJSON().route_estimate_id).toBe(`route-${routes}`);
+      expect(request.postDataJSON().fare_estimate_id).toBe("fare-1");
+      ride = { ...request.postDataJSON(), id: "ride-1", status: "ACTIVE", started_at: new Date().toISOString(), ended_at: null, expected_route: routeQuote, fare_estimate: fare };
+      body = ride;
+    } else if (path.endsWith("/locations") || path.endsWith("/monitoring")) {
+      if (path.endsWith("/locations")) updates++;
+      const poor = path.endsWith("/locations") && request.postDataJSON().accuracy_m > 100;
+      body = { ride_id: "ride-1", gps_status: poor ? "POOR" : "GOOD", route_status: poor ? "UNKNOWN" : "ON_ROUTE", stop_status: poor ? "UNKNOWN" : "MOVING", delay_status: "ON_TIME", distance_from_route_m: poor ? null : 10, last_updated_at: new Date().toISOString() };
+    } else if (path.endsWith("/end")) {
+      expect(request.postDataJSON().drop_location_source).toBe("GPS");
+      ride = { ...ride, status: "COMPLETED", ended_at: new Date().toISOString() }; body = ride;
+    } else if (path.endsWith("/fare-report")) body = { ride_id: "ride-1", fare_paid: 120, reported_at: new Date().toISOString() };
+    else body = ride;
+    await handler.fulfill({ json: body });
+  });
+  return { routes: () => routes, updates: () => updates };
+}
+
+async function startRide(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await page.getByLabel("Where are you going?").fill("Station");
+  await page.getByRole("button", { name: "Test Station" }).click();
+  await page.getByRole("button", { name: "START RIDE", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Ride in progress" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Live monitoring" })).toBeVisible();
+}
+
+test("destination, expired quote refresh, monitoring, completion and fare report", async ({ page }) => {
+  const calls = await mockApp(page, true);
+  await startRide(page);
+  expect(calls.routes()).toBe(2);
+  await page.evaluate(() => (window as unknown as { gpsTest: { emit: (accuracy: number) => void } }).gpsTest.emit(10));
+  await expect(page.getByText("On expected route", { exact: true })).toBeVisible();
+  expect(calls.updates()).toBe(1);
+  await page.getByRole("button", { name: "END RIDE", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Ride completed" })).toBeVisible();
+  const gps = await page.evaluate(() => (window as unknown as { gpsTest: { starts: number; clears: number } }).gpsTest);
+  expect(gps.clears).toBe(gps.starts);
+  await page.getByLabel("How much did you pay?").fill("120");
+  await page.getByRole("button", { name: "SUBMIT FARE", exact: true }).click();
+  await expect(page.getByText(/your fare report will help/)).toBeVisible();
+});
+
+test("poor signal and permission failure keep ride active; retry and unmount clean up", async ({ page }) => {
+  await mockApp(page);
+  await startRide(page);
+  await page.evaluate(() => (window as unknown as { gpsTest: { emit: (accuracy: number) => void } }).gpsTest.emit(200));
+  await expect(page.getByText("Poor signal", { exact: true })).toBeVisible();
+  await page.evaluate(() => (window as unknown as { gpsTest: { fail: (code: number) => void } }).gpsTest.fail(1));
+  await expect(page.getByText(/Permission denied/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ride in progress" })).toBeVisible();
+  await page.getByRole("button", { name: "Restart monitoring" }).click();
+  await page.getByRole("link", { name: "Back to RideWatch" }).click();
+  await expect(page.getByRole("button", { name: "Use my location" })).toBeVisible();
+  const gps = await page.evaluate(() => (window as unknown as { gpsTest: { starts: number; clears: number } }).gpsTest);
+  expect(gps.clears).toBe(gps.starts);
+});

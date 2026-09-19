@@ -4,12 +4,13 @@ from fastapi import APIRouter, Depends, Request
 from app.schemas.ride import CreateRide, RideResponse
 from app.schemas.fare import DropLocation
 from app.services.ride_service import RideService
+from app.schemas.monitoring import LocationSample, MonitoringResponse
 
 router = APIRouter(prefix="/api/rides", tags=["rides"])
 
 
 def get_service(request: Request) -> RideService:
-    return RideService(request.app.state.ride_repository, request.app.state.fare_service)
+    return RideService(request.app.state.ride_repository, request.app.state.fare_service, request.app.state.route_service, request.app.state.clock)
 
 
 Service = Annotated[RideService, Depends(get_service)]
@@ -26,5 +27,19 @@ def get_ride(ride_id: UUID, service: Service):
 
 
 @router.patch("/{ride_id}/end", response_model=RideResponse)
-def end_ride(ride_id: UUID, service: Service, data: DropLocation | None = None):
-    return service.end(ride_id, data)
+def end_ride(ride_id: UUID, service: Service, request: Request, data: DropLocation | None = None):
+    monitoring = request.app.state.monitoring_service
+    with monitoring.lock:
+        ride = service.end(ride_id, data)
+        monitoring.clear(ride_id)
+        return ride
+
+
+@router.post("/{ride_id}/locations", response_model=MonitoringResponse)
+def update_location(ride_id: UUID, data: LocationSample, request: Request):
+    return request.app.state.monitoring_service.update(ride_id, data)
+
+
+@router.get("/{ride_id}/monitoring", response_model=MonitoringResponse)
+def get_monitoring(ride_id: UUID, request: Request):
+    return request.app.state.monitoring_service.get(ride_id)
