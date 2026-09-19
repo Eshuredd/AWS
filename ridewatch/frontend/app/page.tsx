@@ -27,7 +27,7 @@ export default function Home() {
     navigator.geolocation.getCurrentPosition(({ coords }) => { setLocation({ latitude: coords.latitude, longitude: coords.longitude }); setLocating(false); }, (failure) => {
       setLocating(false);
       setLocationError(failure.code === 1 ? "Location permission was denied. Enable location access in your browser settings, then try again." : failure.code === 3 ? "Finding your location took too long. Please try again." : "Your location is unavailable. Check your device location settings and try again.");
-    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+    }, { enableHighAccuracy: false, timeout: 25000, maximumAge: 60000 });
   }
   async function start(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

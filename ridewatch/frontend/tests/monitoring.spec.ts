@@ -54,10 +54,10 @@ test("watcher ignores late responses and handles missing browser support", async
 
 async function mockApp(page: Page, expired = false) {
   await page.addInitScript(() => {
-    const control: { starts: number; clears: number; emit: (accuracy: number) => void; fail: (code: number) => void } = { starts: 0, clears: 0, emit: () => {}, fail: () => {} };
+    const control: { starts: number; clears: number; initialOptions?: PositionOptions; emit: (accuracy: number) => void; fail: (code: number) => void } = { starts: 0, clears: 0, emit: () => {}, fail: () => {} };
     Object.assign(window, { gpsTest: control });
     Object.defineProperty(navigator, "geolocation", { value: {
-      getCurrentPosition(success: PositionCallback) { success({ coords: { latitude: 17.44, longitude: 78.49, accuracy: 10 } } as GeolocationPosition); },
+      getCurrentPosition(success: PositionCallback, _failure: PositionErrorCallback, options: PositionOptions) { control.initialOptions = options; success({ coords: { latitude: 17.44, longitude: 78.49, accuracy: 10 } } as GeolocationPosition); },
       watchPosition(success: PositionCallback, failure: PositionErrorCallback) {
         control.starts++;
         control.emit = (accuracy: number) => success({ coords: { latitude: 17.44, longitude: 78.50, accuracy } } as GeolocationPosition);
@@ -71,7 +71,7 @@ async function mockApp(page: Page, expired = false) {
   let ride: Record<string, unknown> = {};
   const fare = { estimate_id: "fare-1", supported: true, currency: "INR", official_meter: { minimum: 104, maximum: 104, source: "Telangana", effective_from: "2014-02-14", night_applied: false }, typical_reported: null };
   let routeQuote: Record<string, unknown>;
-  await page.route("http://localhost:8000/**", async handler => {
+  await page.route("**/api/**", async handler => {
     const request = handler.request();
     const path = new URL(request.url()).pathname;
     let body: unknown;
@@ -105,6 +105,7 @@ async function startRide(page: Page) {
   await expect(page.getByLabel("Where are you going?")).toBeDisabled();
   await expect(page.getByText("Add your current location before searching for a destination.")).toBeVisible();
   await page.getByRole("button", { name: "Use my location" }).click();
+  expect(await page.evaluate(() => (window as unknown as { gpsTest: { initialOptions: PositionOptions } }).gpsTest.initialOptions)).toEqual({ enableHighAccuracy: false, timeout: 25000, maximumAge: 60000 });
   await expect(page.getByLabel("Where are you going?")).toBeEnabled();
   await page.getByLabel("Where are you going?").fill("Station");
   await page.getByRole("button", { name: "Test Station" }).click();
@@ -131,6 +132,24 @@ test("destination search waits for current location and sends both coordinates",
   expect(searches).toHaveLength(1);
   expect(searches[0].searchParams.get("lat")).toBe("17.44");
   expect(searches[0].searchParams.get("lng")).toBe("78.49");
+  expect(searches[0].pathname).toBe("/api/places/search");
+});
+
+test("initial pickup timeout keeps search disabled and offers a retry", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "geolocation", { value: {
+      getCurrentPosition(_success: PositionCallback, failure: PositionErrorCallback, options: PositionOptions) {
+        Object.assign(window, { pickupOptions: options });
+        failure({ code: 3 } as GeolocationPositionError);
+      },
+    } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.getByText("Finding your location took too long. Please try again.")).toBeVisible();
+  await expect(page.getByLabel("Where are you going?")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Use my location" })).toBeEnabled();
+  expect(await page.evaluate(() => (window as unknown as { pickupOptions: PositionOptions }).pickupOptions)).toEqual({ enableHighAccuracy: false, timeout: 25000, maximumAge: 60000 });
 });
 
 test("destination, expired quote refresh, monitoring, completion and fare report", async ({ page }) => {

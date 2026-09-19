@@ -8,7 +8,7 @@ export type Ride = {
   expected_route: RouteEstimate | null;
 };
 export type CreateRide = Pick<Ride, "start_lat" | "start_lng" | "destination" | "vehicle_number"> & { destination_lat: number; destination_lng: number; expected_distance_km: number; expected_duration_minutes: number; fare_estimate_id?: string; route_estimate_id?: string };
-const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try { response = await fetch(`${base}${path}`, { ...init, cache: "no-store", signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000), headers: { "Content-Type": "application/json", ...init?.headers } }); }

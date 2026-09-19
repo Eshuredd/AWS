@@ -1,0 +1,9 @@
+{
+  "Variables": {
+    "LOCATION_PROVIDER": "aws",
+    "STORAGE_BACKEND": "dynamodb",
+    "DYNAMODB_TABLE_NAME": "ridewatch",
+    "ROUTE_ESTIMATE_MAX_AGE_SECONDS": "300",
+    "CORS_ORIGINS": "[\"http://localhost:3000\",\"https://main.YOUR_AMPLIFY_APP_ID.amplifyapp.com\"]"
+  }
+}

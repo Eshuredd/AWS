@@ -1,0 +1,20 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "geo-places:SearchText",
+      "Resource": "arn:aws:geo-places:ap-south-1::provider/default"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "geo-routes:CalculateRoutes",
+      "Resource": "arn:aws:geo-routes:ap-south-1::provider/default"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:ConditionCheckItem"],
+      "Resource": "arn:aws:dynamodb:ap-south-1:ACCOUNT_ID:table/ridewatch"
+    }
+  ]
+}

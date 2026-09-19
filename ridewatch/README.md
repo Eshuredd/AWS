@@ -2,6 +2,24 @@
 
 Booking-independent ride safety companion for India.
 
+## Local development and deployment readiness
+
+The deployment files are prepared, but **no Lambda/API Gateway/Amplify deployment has been performed**. Real DynamoDB persistence has been manually verified by the project owner. Follow [DEPLOYMENT.md](DEPLOYMENT.md) for the ordered Console/CLI runbook, IAM templates, packaging, production CORS and verification.
+
+| Local | Production target |
+|---|---|
+| Next.js on localhost | Amplify Hosting over HTTPS |
+| FastAPI through Uvicorn | API Gateway HTTP API → Lambda → Mangum → same FastAPI app |
+| Optional AWS_PROFILE from backend/.env | IAM execution role; no configured AWS_PROFILE/access keys |
+| Memory by default, or DynamoDB | DynamoDB required |
+| localhost CORS origin | Exact Amplify HTTPS origin in CORS_ORIGINS |
+
+FastAPI is the single CORS owner; API Gateway CORS should remain unconfigured. `NEXT_PUBLIC_API_URL` must be supplied at Amplify build time. Lambda provides AWS_REGION automatically and ignores local dotenv/profile settings. `/health` stays independent of AWS services.
+
+Build a Linux/Python 3.12/x86_64 ZIP locally with `.\scripts\build-lambda.ps1`; the handler is `app.lambda_handler.handler`. No Docker or deployment is performed by the build. The ZIP excludes local configuration, credentials, tests and caches. The frontend keeps Next.js 16 and uses standalone output plus Amplify's explicit deployment specification; see the compatibility notes in the runbook before the first real deployment.
+
+Initial pickup now uses network-assisted geolocation (`enableHighAccuracy=false`, 25-second timeout, 60-second maximum cached age) to improve desktop acquisition. Live monitoring retains high-accuracy watchPosition, and GPS drop capture retains its existing behavior. Production browser location requires HTTPS; localhost remains supported for development.
+
 ## Problem and current MVP
 Street-hailed autos, local taxis and directly negotiated rides often happen outside booking apps. RideWatch records a starting point, destination and optional vehicle number before getting in.
 
@@ -70,7 +88,7 @@ cd C:\Users\eshum\OneDrive\Desktop\AWS\ridewatch\backend
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000 --no-access-log
 ```
 The virtual environment is already installed in this workspace. Use `requirements-lock.txt` instead for the exact tested dependency versions.
 
@@ -103,7 +121,7 @@ npm.cmd run start
 ## Backend commands and tests
 From `backend`:
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000 --no-access-log
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 Tests cover health, create/fetch, missing rides, completion and repeated completion, invalid destination and coordinates, vehicle normalization/validation, and CORS.
@@ -137,7 +155,7 @@ Vehicle number may be omitted or null. Format checks accept conventional and Bha
 - Async safety events → Amazon EventBridge
 - AI features later → Amazon Bedrock where appropriate
 
-Later deployment will add a Lambda ASGI adapter/handler and environment-specific CORS. DynamoDB repositories are implemented, but in-memory storage remains unsuitable for Lambda persistence. No cloud resources are created automatically and no deployment is included.
+The Lambda ASGI adapter, ZIP builder, Amplify build configuration and configurable CORS are now prepared. DynamoDB repositories are implemented; memory storage is unsuitable for Lambda and is rejected there. Cloud resources still require deliberate manual provisioning and deployment using the deployment runbook.
 
 Later increments include authentication, OCR, trusted contacts, SOS/emergency escalation and deployment.
 
@@ -183,7 +201,7 @@ From the project root, start the backend:
 ```powershell
 .\scripts\start-backend.ps1
 ```
-This loads `backend/.env` and runs the backend virtual environment's `python -m uvicorn app.main:app --reload --port 8000`. Direct Uvicorn startup also loads application settings automatically.
+This loads `backend/.env` and runs the backend virtual environment's `python -m uvicorn app.main:app --reload --port 8000 --no-access-log`. Direct Uvicorn startup also loads application settings automatically.
 
 For manual AWS CLI commands, dot-source this once per new PowerShell terminal:
 ```powershell
@@ -461,13 +479,13 @@ DYNAMODB_TABLE_NAME=ridewatch-dev
 
 Restart the backend. Process environment variables override `.env`, so clear any stale STORAGE_BACKEND override in your terminal when switching. For role-based credentials later, omit AWS_PROFILE. To return to the default, set `STORAGE_BACKEND=memory` and restart; the table name may remain configured. Switching modes does not migrate records or delete DynamoDB data. Memory-mode IDs are not available in DynamoDB mode and vice versa.
 
-Start the existing backend and frontend using the commands above. Obtain current location before destination search, create a ride, send GPS updates, restart the backend, reload the same ride URL and verify monitoring continues. End the ride and submit a fare. Two instances configured for the same table can use the same route/fare quote IDs and monitoring state. This manual DynamoDB verification has not been performed against a real table in this increment.
+Start the existing backend and frontend using the commands above. Obtain current location before destination search, create a ride, send GPS updates, restart the backend, reload the same ride URL and verify monitoring continues. End the ride and submit a fare. Two instances configured for the same table can use the same route/fare quote IDs and monitoring state. Real DynamoDB persistence has now been manually verified by the project owner; deployment validation is separate and still pending.
 
 Automated tests default explicitly to memory even if your local `.env` selects DynamoDB; the network-blocking fixture covers DynamoDB and Location. DynamoDB tests use a deterministic atomic fake plus botocore Stubber, with no local DynamoDB server. They check nested round trips, conditional inserts, concurrent completers, multi-instance quotes/monitoring, TTL application expiry, filtered Scan pagination, optimistic conflict retries, both completion/GPS race orders, safe failures and absence of GPS-history items. Frontend tests include the no-location search gate and the existing complete ride/fare flow.
 
 ### Remaining limitations
 
-- No authentication/authorization, deployment, Lambda handler or API Gateway infrastructure is added. DynamoDB durability does not make this unauthenticated API suitable for production.
+- No authentication/authorization or live deployment is added. The Lambda handler and deployment configuration are prepared, but no API Gateway/Amplify/Lambda resources have been created. DynamoDB durability does not make this unauthenticated API suitable for production.
 - Precise ride endpoints, expected route geometry, fare-report endpoints and a stop anchor are sensitive. Full GPS trails are not persisted. Production still needs consent, retention/deletion policies, access control and an encryption policy.
 - Fare matching performs a paginated filtered Scan over this table. Filtering does not avoid reading other entities or guarantee a single snapshot across scan pages. The unchanged 200 m / 500 m algorithm is appropriate only for this MVP; production needs geospatial aggregation/indexing.
 - DynamoDB's [400 KB per-item limit](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html) applies to route quotes and rides containing geometry. Oversized records fail safely with 503; route splitting/compression is not implemented.

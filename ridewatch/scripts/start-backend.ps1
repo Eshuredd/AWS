@@ -9,7 +9,7 @@ if (-not (Test-Path -LiteralPath $pythonPath -PathType Leaf)) {
 . (Join-Path $PSScriptRoot "load-env.ps1")
 Push-Location $backendPath
 try {
-    & $pythonPath -m uvicorn app.main:app --reload --port 8000
+    & $pythonPath -m uvicorn app.main:app --reload --port 8000 --no-access-log
 }
 finally {
     Pop-Location
