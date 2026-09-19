@@ -18,8 +18,8 @@ class RouteUnavailable(LocationError):
 
 class LocationProvider(ABC):
     @abstractmethod
-    def search_places(self, query: str, bias_lat: float | None = None,
-                      bias_lng: float | None = None) -> list[PlaceResult]: ...
+    def search_places(self, query: str, bias_lat: float,
+                      bias_lng: float) -> list[PlaceResult]: ...
 
     @abstractmethod
     def calculate_route(self, start_lat: float, start_lng: float,

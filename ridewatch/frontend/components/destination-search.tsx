@@ -12,10 +12,10 @@ export default function DestinationSearch({ location, selected, onSelect, disabl
   const [state, setState] = useState<SearchState | null>(null);
   const query = text.trim();
   const key = JSON.stringify([query, location, attempt]);
-  const searching = query.length >= 3 && !selected && !disabled;
+  const searching = !!location && query.length >= 3 && !selected && !disabled;
   const current = state?.key === key ? state : null;
   useEffect(() => {
-    if (!searching) return;
+    if (!searching || !location) return;
     const controller = new AbortController();
     const timer = setTimeout(() => {
       searchPlaces(query, location, controller.signal).then(({ results }) => {
@@ -30,8 +30,8 @@ export default function DestinationSearch({ location, selected, onSelect, disabl
     <label htmlFor="destination" className="mb-2 block text-sm font-bold">Where are you going?</label>
     <input id="destination" placeholder="e.g. Secunderabad Railway Station" value={text}
       onChange={event => { setText(event.target.value); setState(null); onSelect(null); }}
-      maxLength={200} required disabled={disabled} autoComplete="off" aria-describedby="destination-help"/>
-    <p id="destination-help" className="mt-2 text-xs text-stone-500">{selected ? "Destination selected. Edit to choose a different place." : "Type at least 3 characters, then select a destination."}</p>
+      maxLength={200} required disabled={disabled || !location} autoComplete="off" aria-describedby="destination-help"/>
+    <p id="destination-help" className="mt-2 text-xs text-stone-500">{!location ? "Add your current location before searching for a destination." : selected ? "Destination selected. Edit to choose a different place." : "Type at least 3 characters, then select a destination."}</p>
     {searching && <div className="mt-2" aria-live="polite">
       {!current?.done && <p className="py-3 text-sm text-stone-500" role="status">Searching destinations…</p>}
       {current?.error && <div role="alert" className="text-sm text-red-700"><p>{current.error}</p><button type="button" className="secondary mt-2" onClick={() => setAttempt(value => value + 1)}>Retry search</button></div>}

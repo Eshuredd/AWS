@@ -10,7 +10,8 @@ router = APIRouter(prefix="/api/rides", tags=["rides"])
 
 
 def get_service(request: Request) -> RideService:
-    return RideService(request.app.state.ride_repository, request.app.state.fare_service, request.app.state.route_service, request.app.state.clock)
+    return RideService(request.app.state.ride_repository, request.app.state.fare_service,
+                       request.app.state.route_service, request.app.state.clock, request.app.state.storage.monitoring)
 
 
 Service = Annotated[RideService, Depends(get_service)]
@@ -27,12 +28,8 @@ def get_ride(ride_id: UUID, service: Service):
 
 
 @router.patch("/{ride_id}/end", response_model=RideResponse)
-def end_ride(ride_id: UUID, service: Service, request: Request, data: DropLocation | None = None):
-    monitoring = request.app.state.monitoring_service
-    with monitoring.lock:
-        ride = service.end(ride_id, data)
-        monitoring.clear(ride_id)
-        return ride
+def end_ride(ride_id: UUID, service: Service, data: DropLocation | None = None):
+    return service.end(ride_id, data)
 
 
 @router.post("/{ride_id}/locations", response_model=MonitoringResponse)

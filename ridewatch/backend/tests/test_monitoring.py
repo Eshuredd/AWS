@@ -124,7 +124,8 @@ def test_missing_completed_and_cleanup(session):
     assert client.get(f'/api/rides/{uuid4()}/monitoring').status_code == 404
     send(session)
     client.patch(f"/api/rides/{ride['id']}/end")
-    assert not app.state.monitoring_service._states
+    from uuid import UUID
+    assert app.state.storage.monitoring.get(UUID(ride['id'])) is None
     assert client.post(f"/api/rides/{ride['id']}/locations", json=payload).status_code == 409
     assert client.get(f"/api/rides/{ride['id']}/monitoring").status_code == 409
 

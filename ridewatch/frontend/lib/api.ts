@@ -40,9 +40,9 @@ export const validVehicle = (value: string) => !value || /^(?:[A-Z]{2}[0-9]{1,2}
 export type Coordinates = { latitude: number; longitude: number };
 export type Place = Coordinates & { id: string | null; label: string };
 export type RouteEstimate = { distance_km: number; duration_minutes: number; duration_seconds: number; route_estimate_id: string; calculated_at: string; expires_at: string; traffic_aware: boolean; route_geometry: Coordinates[] };
-export function searchPlaces(query: string, location: Coordinates | null, signal: AbortSignal) {
+export function searchPlaces(query: string, location: Coordinates, signal: AbortSignal) {
   const params = new URLSearchParams({ q: query });
-  if (location) { params.set("lat", String(location.latitude)); params.set("lng", String(location.longitude)); }
+  params.set("lat", String(location.latitude)); params.set("lng", String(location.longitude));
   return request<{ results: Place[] }>(`/api/places/search?${params}`, { signal });
 }
 export function calculateRoute(start: Coordinates, destination: Coordinates, signal: AbortSignal) {

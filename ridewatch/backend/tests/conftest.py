@@ -1,5 +1,9 @@
 import pytest
 import botocore.httpsession
+import os
+
+# Test defaults must not change when a developer switches their local .env to DynamoDB.
+os.environ["STORAGE_BACKEND"] = "memory"
 
 
 @pytest.fixture(autouse=True)

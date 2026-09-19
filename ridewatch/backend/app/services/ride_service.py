@@ -1,4 +1,5 @@
 from uuid import UUID, uuid4
+from contextlib import nullcontext
 from app.models.ride import Ride, RideStatus
 from app.repositories.ride_repository import RideRepository
 from app.schemas.ride import CreateRide
@@ -12,10 +13,11 @@ class RideNotFound(Exception):
 
 
 class RideService:
-    def __init__(self, repository: RideRepository, fares: FareService | None = None, routes=None, clock=utc_now) -> None:
+    def __init__(self, repository: RideRepository, fares: FareService | None = None, routes=None, clock=utc_now, monitoring=None) -> None:
         self.repository = repository
         self.fares = fares
         self.routes, self.clock = routes, clock
+        self.monitoring = monitoring
 
     def create(self, data: CreateRide) -> Ride:
         route = self.routes.snapshot(data) if data.route_estimate_id else None
@@ -32,7 +34,10 @@ class RideService:
         return ride
 
     def end(self, ride_id: UUID, drop: DropLocation | None = None) -> Ride:
-        ride = self.repository.end(ride_id, drop)
-        if ride is None:
-            raise RideNotFound()
-        return ride
+        with self.monitoring.completion_guard() if self.monitoring is not None else nullcontext():
+            ride = self.repository.end(ride_id, drop)
+            if ride is None:
+                raise RideNotFound()
+            if self.monitoring is not None:
+                self.monitoring.delete(ride_id)
+            return ride

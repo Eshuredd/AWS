@@ -1,12 +1,14 @@
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 from math import cos, radians, hypot
-from threading import RLock
 from app.models.ride import RideStatus
 from app.schemas.monitoring import MonitoringResponse
 from app.services.fare_service import FareError
 from app.services.ride_service import RideNotFound
 from app.services.route_service import utc_now
+from app.models.monitoring import MonitoringState
+from app.schemas.location import RoutePoint
+from app.repositories.monitoring_repository import InMemoryMonitoringStateRepository
+from app.repositories.errors import WriteConflict, RideNotActive, StorageUnavailable
 
 
 @dataclass(frozen=True)
@@ -42,24 +44,10 @@ def distance_to_route(point, geometry):
     return best
 
 
-@dataclass
-class MonitoringState:
-    response: MonitoringResponse
-    off_count: int = 0
-    on_count: int = 0
-    anchor: object = None
-    stopped_since: datetime | None = None
-    last_good_at: datetime | None = None
-    # A bounded recent window only; never exposed by the API.
-    recent: list = field(default_factory=list)
-
-
 class MonitoringService:
-    def __init__(self, repository, clock=utc_now, rules=MonitoringRules()):
+    def __init__(self, repository, clock=utc_now, rules=MonitoringRules(), state_repository=None):
         self.repository, self.clock, self.rules = repository, clock, rules
-        self._states = {}
-        # Shared with completion: an update cannot race past ride completion.
-        self.lock = RLock()
+        self.states = state_repository if state_repository is not None else InMemoryMonitoringStateRepository(repository)
 
     def _ride(self, ride_id):
         ride = self.repository.get(ride_id)
@@ -70,11 +58,10 @@ class MonitoringService:
         return ride
 
     def clear(self, ride_id):
-        with self.lock:
-            self._states.pop(ride_id, None)
+        self.states.delete(ride_id)
 
     def _state(self, ride_id):
-        return self._states.setdefault(ride_id, MonitoringState(MonitoringResponse(ride_id=ride_id)))
+        return self.states.get(ride_id) or MonitoringState(response=MonitoringResponse(ride_id=ride_id))
 
     def _response(self, ride, state, now):
         response = state.response.model_copy()
@@ -89,56 +76,71 @@ class MonitoringService:
         return response
 
     def get(self, ride_id):
-        with self.lock:
-            ride = self._ride(ride_id)
-            return self._response(ride, self._state(ride_id), self.clock())
+        ride = self._ride(ride_id)
+        state = self._state(ride_id)
+        self._ride(ride_id)
+        return self._response(ride, state, self.clock())
 
     def update(self, ride_id, sample):
-        with self.lock:
+        # Fixed server receipt time prevents retries from making an old sample newer.
+        now = self.clock()
+        for _ in range(3):
             ride = self._ride(ride_id)
-            state, now, rules = self._state(ride_id), self.clock(), self.rules
+            state = self._state(ride_id)
             baseline = ride.expected_route
             if not baseline or not baseline.traffic_aware or len(baseline.route_geometry) < 2:
                 raise FareError("This ride has no validated route for live monitoring")
-            response = state.response
-            if response.last_updated_at and (now - response.last_updated_at).total_seconds() < rules.min_sample_interval_seconds:
+            if state.response.last_updated_at and (now - state.response.last_updated_at).total_seconds() < self.rules.min_sample_interval_seconds:
+                self._ride(ride_id)
                 return self._response(ride, state, now)
-            response.last_updated_at = now
-            gap = state.last_good_at is None or (now - state.last_good_at).total_seconds() > rules.max_sample_gap_seconds
-            if gap or sample.accuracy_m > rules.good_accuracy_m:
-                state.anchor, state.stopped_since = None, None
-                state.off_count = state.on_count = 0
-                state.recent.clear()
-                response.route_status, response.stop_status, response.distance_from_route_m = "UNKNOWN", "UNKNOWN", None
-            if sample.accuracy_m > rules.good_accuracy_m:
-                response.gps_status = "POOR"
-                state.last_good_at = None
-                return self._response(ride, state, now)
-            response.gps_status = "GOOD"
-            state.last_good_at = now
-            state.recent.append((now, sample))
-            state.recent = state.recent[-60:]
-            distance = distance_to_route(sample, baseline.route_geometry)
-            response.distance_from_route_m = round(distance, 1)
-            if distance > rules.deviation_threshold_m + sample.accuracy_m:
-                state.off_count += 1
-                state.on_count = 0
-                if state.off_count >= rules.deviation_samples or response.route_status == "DEVIATED":
-                    response.route_status = "DEVIATED"
-                else:
-                    response.route_status = "POSSIBLE_DEVIATION"
+            version = state.version
+            self._advance(state, sample, baseline, now)
+            state.response = self._response(ride, state, now)
+            try:
+                saved = self.states.save(state, version)
+                return saved.response
+            except RideNotActive:
+                self._ride(ride_id)
+                raise FareError("Live monitoring is available only for active rides") from None
+            except WriteConflict:
+                continue
+        self._ride(ride_id)
+        raise StorageUnavailable()
+
+    def _advance(self, state, sample, baseline, now):
+        response, rules = state.response, self.rules
+        response.last_updated_at = now
+        gap = state.last_good_at is None or (now - state.last_good_at).total_seconds() > rules.max_sample_gap_seconds
+        if gap or sample.accuracy_m > rules.good_accuracy_m:
+            state.anchor, state.stopped_since = None, None
+            state.off_count = state.on_count = 0
+            response.route_status, response.stop_status, response.distance_from_route_m = "UNKNOWN", "UNKNOWN", None
+        if sample.accuracy_m > rules.good_accuracy_m:
+            response.gps_status = "POOR"
+            state.last_good_at = None
+            return
+        response.gps_status = "GOOD"
+        state.last_good_at = now
+        distance = distance_to_route(sample, baseline.route_geometry)
+        response.distance_from_route_m = round(distance, 1)
+        if distance > rules.deviation_threshold_m + sample.accuracy_m:
+            state.off_count += 1
+            state.on_count = 0
+            if state.off_count >= rules.deviation_samples or response.route_status == "DEVIATED":
+                response.route_status = "DEVIATED"
             else:
-                state.off_count = 0
-                state.on_count += 1
-                if response.route_status != "DEVIATED" or state.on_count >= rules.recovery_samples:
-                    response.route_status = "ON_ROUTE"
-            # Stop detection requires accuracy finer than the movement radius.
-            # Otherwise uncertainty could conceal motion and create a false stop.
-            if sample.accuracy_m > rules.stop_radius_m:
-                state.anchor, state.stopped_since = None, None
-                response.stop_status = "UNKNOWN"
-            else:
-                if state.anchor is None or distance_to_route(sample, (state.anchor, state.anchor)) >= rules.stop_radius_m:
-                    state.anchor, state.stopped_since = sample, now
-                response.stop_status = "PROLONGED_STOP" if (now - state.stopped_since).total_seconds() >= rules.stop_seconds else "MOVING"
-            return self._response(ride, state, now)
+                response.route_status = "POSSIBLE_DEVIATION"
+        else:
+            state.off_count = 0
+            state.on_count += 1
+            if response.route_status != "DEVIATED" or state.on_count >= rules.recovery_samples:
+                response.route_status = "ON_ROUTE"
+        # Stop detection requires accuracy finer than the movement radius.
+        # Otherwise uncertainty could conceal motion and create a false stop.
+        if sample.accuracy_m > rules.stop_radius_m:
+            state.anchor, state.stopped_since = None, None
+            response.stop_status = "UNKNOWN"
+        else:
+            if state.anchor is None or distance_to_route(sample, (state.anchor, state.anchor)) >= rules.stop_radius_m:
+                state.anchor, state.stopped_since = RoutePoint(latitude=sample.latitude, longitude=sample.longitude), now
+            response.stop_status = "PROLONGED_STOP" if (now - state.stopped_since).total_seconds() >= rules.stop_seconds else "MOVING"

@@ -16,7 +16,7 @@ class FakeLocationProvider(LocationProvider):
         self.route_calls = []
         self.fail = False
 
-    def search_places(self, query, bias_lat=None, bias_lng=None):
+    def search_places(self, query, bias_lat, bias_lng):
         self.search_calls.append((query, bias_lat, bias_lng))
         if self.fail:
             raise SearchUnavailable()
@@ -46,10 +46,10 @@ def coordinates():
 
 
 def test_search_success(client, provider):
-    response = client.get("/api/places/search", params={"q": " Secunderabad "})
+    response = client.get("/api/places/search", params={"q": " Secunderabad ", "lat": 17.44, "lng": 78.49})
     assert response.status_code == 200
     assert response.json()["results"][0]["latitude"] == 17.433
-    assert provider.search_calls == [("Secunderabad", None, None)]
+    assert provider.search_calls == [("Secunderabad", 17.44, 78.49)]
 
 
 def test_search_bias(client, provider):
@@ -59,6 +59,8 @@ def test_search_bias(client, provider):
 
 @pytest.mark.parametrize("params", [{"q": "ab"}, {"q": "   "}, {"q": "  a "}, {"q": "x" * 201}, {"q": "station", "lat": 17}, {"q": "station", "lat": 91, "lng": 78}, {"q": "station", "lat": 17, "lng": "NaN"}])
 def test_search_invalid(client, provider, params):
+    if set(params) == {"q"}:
+        params = {**params, "lat": 17.44, "lng": 78.49}
     assert client.get("/api/places/search", params=params).status_code == 422
     assert provider.search_calls == []
 
@@ -82,7 +84,7 @@ def test_route_invalid(client, provider, coordinates, field, value):
 
 def test_failures(client, provider, coordinates):
     provider.fail = True
-    response = client.get("/api/places/search?q=station")
+    response = client.get("/api/places/search?q=station&lat=17.44&lng=78.49")
     assert response.status_code == 503
     assert response.json() == {"detail": "Destination search is temporarily unavailable"}
     response = client.post("/api/route-estimate", json=coordinates)
@@ -117,16 +119,14 @@ def sdk_client(service):
     return boto3.client(service, region_name="ap-south-1", aws_access_key_id="testing", aws_secret_access_key="testing")
 
 
-@pytest.mark.parametrize("bias", [False, True])
-def test_aws_search_contract(bias):
+def test_aws_search_contract():
     sdk = sdk_client("geo-places")
     params = {"QueryText": "Station", "MaxResults": 5, "Filter": {"IncludeCountries": ["IND"]}, "IntendedUse": "Storage"}
-    if bias:
-        params["BiasPosition"] = [78.49, 17.44]
+    params["BiasPosition"] = [78.49, 17.44]
     with Stubber(sdk) as stub:
         stub.add_response("search_text", {"PricingBucket": "test", "ResultItems": [{"PlaceType": "PointOfInterest", "PlaceId": "place", "Title": "Station", "Address": {"Label": "Hyderabad, India"}, "Position": [78.501, 17.433]}]}, params)
         provider = AmazonLocationProvider("ap-south-1", places_client=sdk)
-        results = provider.search_places("Station", 17.44 if bias else None, 78.49 if bias else None)
+        results = provider.search_places("Station", 17.44, 78.49)
         assert results[0].model_dump() == {"id": "place", "label": "Station, Hyderabad, India", "latitude": 17.433, "longitude": 78.501}
         stub.assert_no_pending_responses()
 
@@ -135,7 +135,7 @@ def test_aws_search_contract(bias):
 def test_aws_empty_search(response):
     sdk = Mock()
     sdk.search_text.return_value = response
-    assert AmazonLocationProvider("ap-south-1", places_client=sdk).search_places("Unknown") == []
+    assert AmazonLocationProvider("ap-south-1", places_client=sdk).search_places("Unknown", 17.44, 78.49) == []
 
 
 def test_aws_route_contract():
@@ -166,7 +166,7 @@ def test_aws_errors_are_safe(exception, caplog):
     sdk.search_text.side_effect = exception
     provider = AmazonLocationProvider("ap-south-1", places_client=sdk)
     with pytest.raises(SearchUnavailable, match="Destination search is temporarily unavailable"):
-        provider.search_places("private destination")
+        provider.search_places("private destination", 17.44, 78.49)
     assert "private destination" not in caplog.text
     assert "test.invalid" not in caplog.text
 
@@ -206,3 +206,16 @@ def test_join_multiple_legs():
     sdk.calculate_routes.return_value["Routes"][0]["Legs"][1]["Geometry"]["LineString"][0] = [79, 18]
     with pytest.raises(RouteUnavailable):
         provider.calculate_route(17, 78, 17.2, 78.2)
+
+
+@pytest.mark.parametrize("params", [{"q": "station"}, {"q": "station", "lat": 17.44}, {"q": "station", "lng": 78.49}])
+def test_search_requires_both_coordinates(client, provider, params):
+    assert client.get("/api/places/search", params=params).status_code == 422
+    assert provider.search_calls == []
+
+
+def test_adapter_refuses_unconstrained_search():
+    sdk = Mock()
+    with pytest.raises(SearchUnavailable):
+        AmazonLocationProvider("ap-south-1", places_client=sdk).search_places("station", None, None)
+    sdk.search_text.assert_not_called()

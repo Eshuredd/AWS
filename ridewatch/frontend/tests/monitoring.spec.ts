@@ -102,13 +102,36 @@ async function mockApp(page: Page, expired = false) {
 
 async function startRide(page: Page) {
   await page.goto("/");
+  await expect(page.getByLabel("Where are you going?")).toBeDisabled();
+  await expect(page.getByText("Add your current location before searching for a destination.")).toBeVisible();
   await page.getByRole("button", { name: "Use my location" }).click();
+  await expect(page.getByLabel("Where are you going?")).toBeEnabled();
   await page.getByLabel("Where are you going?").fill("Station");
   await page.getByRole("button", { name: "Test Station" }).click();
   await page.getByRole("button", { name: "START RIDE", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ride in progress" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Live monitoring" })).toBeVisible();
 }
+
+test("destination search waits for current location and sends both coordinates", async ({ page }) => {
+  await mockApp(page);
+  const searches: URL[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname === "/api/places/search") searches.push(new URL(request.url()));
+  });
+  await page.clock.install();
+  await page.goto("/");
+  await expect(page.getByLabel("Where are you going?")).toBeDisabled();
+  await page.clock.fastForward(2000);
+  expect(searches).toHaveLength(0);
+  await page.getByRole("button", { name: "Use my location" }).click();
+  await page.getByLabel("Where are you going?").fill("Station");
+  await page.clock.fastForward(1000);
+  await expect(page.getByRole("button", { name: "Test Station" })).toBeVisible();
+  expect(searches).toHaveLength(1);
+  expect(searches[0].searchParams.get("lat")).toBe("17.44");
+  expect(searches[0].searchParams.get("lng")).toBe("78.49");
+});
 
 test("destination, expired quote refresh, monitoring, completion and fare report", async ({ page }) => {
   const calls = await mockApp(page, true);

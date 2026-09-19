@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from threading import Lock
+from threading import RLock
 from uuid import UUID
 from app.models.ride import Ride
 from app.schemas.fare import DropLocation
@@ -21,7 +21,8 @@ class RideRepository(ABC):
 class InMemoryRideRepository(RideRepository):
     def __init__(self) -> None:
         self._rides: dict[UUID, Ride] = {}
-        self._lock = Lock()
+        self.transaction_lock = RLock()
+        self._lock = self.transaction_lock
 
     def save(self, ride: Ride) -> Ride:
         with self._lock:

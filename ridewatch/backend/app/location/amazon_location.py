@@ -47,15 +47,16 @@ class AmazonLocationProvider(LocationProvider):
         # Never log request coordinates, free text, credential values or exception messages.
         logger.warning("Amazon Location %s failed (%s)", operation, type(error).__name__)
 
-    def search_places(self, query: str, bias_lat: float | None = None,
-                      bias_lng: float | None = None) -> list[PlaceResult]:
+    def search_places(self, query: str, bias_lat: float,
+                      bias_lng: float) -> list[PlaceResult]:
+        if bias_lat is None or bias_lng is None:
+            raise SearchUnavailable()
         params: dict[str, Any] = {
             "QueryText": query, "MaxResults": 5,
             "Filter": {"IncludeCountries": ["IND"]},
             "IntendedUse": "Storage",  # Selected labels/coordinates are retained in rides.
         }
-        if bias_lat is not None and bias_lng is not None:
-            params["BiasPosition"] = [bias_lng, bias_lat]
+        params["BiasPosition"] = [bias_lng, bias_lat]
         try:
             response = self._client("geo-places").search_text(**params)
             return [self._place(item) for item in response.get("ResultItems", [])[:5]]

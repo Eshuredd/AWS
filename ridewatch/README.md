@@ -8,11 +8,11 @@ Street-hailed autos, local taxis and directly negotiated rides often happen outs
 This MVP includes browser geolocation with error handling, normalized vehicle numbers, Amazon Location destination search and traffic-aware road estimates, and creating, viewing and completing ride sessions. Active rides with validated route quotes include live GPS monitoring for deviation, prolonged stops and excessive delay. These are informational signals, not emergency response. Auto fare estimation separates the official Telangana meter estimate from aggregated fares reported after completed rides.
 
 ## Architecture
-Next.js App Router + TypeScript + Tailwind CSS → FastAPI routes → RideService → RideRepository → InMemoryRideRepository.
+Next.js App Router + TypeScript + Tailwind CSS → FastAPI routes → domain services → repository interfaces → memory or DynamoDB.
 
-The application factory owns an isolated repository and an injectable LocationProvider. A future DynamoDB implementation can replace the repository without changing the API layer. Completion is atomic and repeated requests preserve the original end timestamp. Live search and routing require backend AWS credentials; startup, health and automated tests do not.
+The application factory makes one storage decision from `STORAGE_BACKEND`, defaulting to `memory`. Rides, fare reports, route quotes, fare quotes and minimal monitoring state have injectable repositories. DynamoDB mode shares durable state between restarts and instances; memory mode remains isolated to one process. Completion is atomic and repeated requests preserve the original end timestamp and drop. AWS clients initialize lazily; startup, health and automated tests do not make AWS calls.
 
-In-memory sessions disappear on restart and are not shared across processes. Use one backend worker. No authentication is implemented; this is a local prototype.
+In-memory sessions disappear on restart and are not shared across processes. Use one backend worker in memory mode. DynamoDB mode supports shared state but still has no authentication; this remains a development prototype.
 
 ## Project structure
 ```text
@@ -137,9 +137,9 @@ Vehicle number may be omitted or null. Format checks accept conventional and Bha
 - Async safety events → Amazon EventBridge
 - AI features later → Amazon Bedrock where appropriate
 
-Later deployment will add a Lambda ASGI adapter/handler, a DynamoDB repository and environment-specific CORS. In-memory storage is unsuitable for Lambda persistence. No cloud resources or deployment are implemented; Amazon Location is integrated through backend calls.
+Later deployment will add a Lambda ASGI adapter/handler and environment-specific CORS. DynamoDB repositories are implemented, but in-memory storage remains unsuitable for Lambda persistence. No cloud resources are created automatically and no deployment is included.
 
-Later increments include OCR, trusted contacts and SOS/emergency escalation. Authentication and persistence remain future work.
+Later increments include authentication, OCR, trusted contacts, SOS/emergency escalation and deployment.
 
 ## Real route estimation
 
@@ -157,9 +157,9 @@ Amazon Location Service
    └── Routes: CalculateRoutes
 ```
 
-Search waits 400 ms after typing at least three characters and returns up to five India-filtered destinations. Selecting a suggestion supplies coordinates; arbitrary text does not trigger routing. Editing clears the selection and estimate. Requests are cancellable, stale responses are ignored, and failures offer retries. The UI requires a successful estimate before starting a ride.
+Search requires the user's starting location: the destination field is disabled until it is available, with an explanatory message. It then waits 400 ms after typing at least three characters and returns up to five India-filtered destinations. Selecting a suggestion supplies coordinates; arbitrary text does not trigger routing. Editing clears the selection and estimate. Requests are cancellable, stale responses are ignored, and failures offer retries. The UI requires a successful estimate before starting a ride.
 
-The backend uses current boto3 `geo-places` and `geo-routes` clients. [SearchText](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-places/client/search_text.html) resolves text directly to coordinates; no additional GetPlace or Geocode call is needed. Search uses `IncludeCountries=["IND"]`, optional location bias, and `IntendedUse="Storage"` because selected destination data is retained in ride sessions.
+The backend uses current boto3 `geo-places` and `geo-routes` clients. [SearchText](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-places/client/search_text.html) resolves text directly to coordinates; no additional GetPlace or Geocode call is needed. `GET /api/places/search` requires both `lat` and `lng`, returning 422 if either or both are missing. The adapter always supplies `BiasPosition=[lng, lat]`, alongside `IncludeCountries=["IND"]` and `IntendedUse="Storage"`. There is no hard-coded fallback coordinate.
 
 [CalculateRoutes](https://docs.aws.amazon.com/boto3/latest/reference/services/geo-routes/client/calculate_routes.html) uses `TravelMode="Car"`, `OptimizeRoutingFor="FastestRoute"`, `MaxAlternatives=0`, `DepartNow=True`, `Traffic={"Usage": "UseTrafficData"}` and `LegGeometryFormat="Simple"`. AWS coordinates are longitude first. Summary meters become kilometers; seconds round up to minutes. Exact seconds and road geometry are preserved for monitoring. Zero-length/unusable routes produce a safe error. Car routes may differ from auto-rickshaw routes. Values are estimates, not guarantees.
 
@@ -196,7 +196,7 @@ Expected values: `ridewatch`, `ap-south-1`, and empty. You no longer need the th
 
 Copy the example to `.env` if absent; preserve existing customizations. `.env` is ignored by Git. If you change regions, update the IAM ARNs below.
 
-The backend identity needs these permissions, attached through IAM or its SSO permission set:
+The backend identity needs the two Location permissions below. DynamoDB mode additionally needs the table-scoped statement. Replace `ACCOUNT_ID` and the table name/region to match your configuration; this is a combined example, not a policy applied by the application:
 
 ```json
 {
@@ -211,12 +211,23 @@ The backend identity needs these permissions, attached through IAM or its SSO pe
       "Effect": "Allow",
       "Action": "geo-routes:CalculateRoutes",
       "Resource": "arn:aws:geo-routes:ap-south-1::provider/default"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Scan",
+        "dynamodb:ConditionCheckItem"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-south-1:ACCOUNT_ID:table/ridewatch-dev"
     }
   ]
 }
 ```
 
-These ARNs intentionally have no account ID. Sources: [Places IAM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_geo-places.html) and [Routes IAM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_geo-routes.html). No place index, route calculator, API Gateway or Lambda resource is required. Live requests incur applicable Amazon Location usage charges.
+The Location ARNs intentionally have no account ID; the DynamoDB ARN must include your account ID. Sources: [Places IAM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_geo-places.html), [Routes IAM](https://docs.aws.amazon.com/service-authorization/latest/reference/list_geo-routes.html) and [DynamoDB transactional IAM](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/transaction-apis-iam.html). Transactions authorize their underlying Put/Delete/ConditionCheck operations: there is no separate `dynamodb:TransactWriteItems` IAM permission to add. `UpdateItem` is not used. Table creation/TTL administration require separate provisioning permissions, not runtime permissions. No place index, route calculator, API Gateway or Lambda resource is required. Live AWS requests incur applicable usage charges.
 
 ## Testing without AWS
 
@@ -257,7 +268,7 @@ MVP reports use the ride's **original expected route distance and duration**; GP
 
 `POST /api/fare-estimate` accepts `distance_km`, `duration_minutes`, `start_lat`, `start_lng`, `destination_lat`, and `destination_lng`. It returns INR, `official_meter`, nullable `typical_reported`, `supported`, and an opaque `estimate_id`. No historical coordinates are returned by estimation or reporting endpoints.
 
-The browser requests fares after Amazon Location supplies the route. Requests are cancellable and stale responses are ignored. Fare failures have their own retry button. Creating a ride passes `fare_estimate_id`; the backend checks it against the exact route and stores the corresponding immutable **nested `fare_estimate` snapshot**, including source, night flag, range, median, count, radius and confidence. New reports arriving between quote and creation do not change it. Active/completed pages render this snapshot without recalculation. Quotes and rides live in the same process; an unknown/mismatched quote returns 409 and needs a refreshed estimate. Older API clients can omit the ID: a snapshot is calculated at creation when route data is available, or null for legacy text-only rides.
+The browser requests fares after Amazon Location supplies the route. Requests are cancellable and stale responses are ignored. Fare failures have their own retry button. Creating a ride passes `fare_estimate_id`; the backend checks it against the exact route and stores the corresponding immutable **nested `fare_estimate` snapshot**, including source, night flag, range, median, count, radius and confidence. New reports arriving between quote and creation do not change it. Active/completed pages render this snapshot without recalculation. Quotes and rides use the configured repositories; an unknown, expired or mismatched quote returns 409 and needs a refreshed estimate. Older API clients can omit the ID: a snapshot is calculated at creation when route data is available, or null for legacy text-only rides.
 
 `PATCH /api/rides/{ride_id}/end` still accepts no body. Optionally send `{ "drop_lat": 17.4337, "drop_lng": 78.5018, "drop_location_source": "GPS" }`. The UI attempts current GPS with a bounded wait of at most 8 seconds; failure uses the stored destination and marks `DESTINATION_FALLBACK`. Completion remains atomic and repeat calls preserve the original end time, drop and fare snapshot.
 
@@ -265,7 +276,7 @@ After completion, users can submit or skip an optional fare. `POST /api/rides/{r
 
 ### Storage, privacy and future scale
 
-`FareReportRepository` abstracts `save`, `list_all`, and `get_for_ride`. The application factory injects `InMemoryFareReportRepository` by default; tests can inject repositories and providers. All reports, quote IDs and ride snapshots **disappear after a backend restart** and are not shared across workers. Use one worker for this hackathon. DynamoDB will be added later behind the repository interface; it is not implemented here.
+`FareReportRepository` abstracts `save`, `list_all`, and `get_for_ride`. The application factory selects `InMemoryFareReportRepository` by default or `DynamoDBFareReportRepository` in DynamoDB mode; tests can inject repositories and providers. Memory-mode reports, quote IDs and ride snapshots disappear after a backend restart; use one worker in that mode. DynamoDB mode retains them and supports multiple backend instances. Its paginated, entity-filtered Scan preserves the existing 200 m / 500 m matching algorithm and is an MVP scaling limitation.
 
 Historical matching coordinates stay internal to the report repository; there is no report listing API or UI showing individual riders or their precise pickup/drop history. Only aggregate statistics are shown to other journeys. Existing ride-detail endpoints remain unauthenticated and accessible by ride ID in this local prototype; do not treat this as production access control. Production should add access controls, retention limits, aggregation and geospatial bucketing/anonymization to reduce precise-coordinate storage and disclosure.
 
@@ -283,7 +294,7 @@ Robust aggregation
 Better typical fare estimate
 ```
 
-For production scale, replace full Haversine scans with H3 or another geospatial index: exact coordinates → geospatial cell → pickup cell / destination cell → aggregated fare statistics. H3, DynamoDB, ML, booking-app scraping and deployment are deliberately not included.
+For production scale, replace full Haversine scans with H3 or another geospatial aggregation strategy: exact coordinates → geospatial cell → pickup cell / destination cell → aggregated fare statistics. H3, ML, booking-app scraping and deployment are deliberately not included.
 
 Fare tests run fully offline with fixed coordinates and synthetic test fixtures, never seeded into the application. `backend/tests/test_fares.py` covers tariff/timezone boundaries, validation, Haversine, both tiers, distance tolerance, percentiles, IQR, report lifecycle, concurrency and immutable snapshots. Existing AWS fake-provider/Stubber tests remain in place.
 
@@ -291,7 +302,7 @@ Fare tests run fully offline with fixed coordinates and synthetic test fixtures,
 
 Amazon Simple LineStrings are converted from **[longitude, latitude]** into named latitude/longitude objects. Adjoining legs share one endpoint, which is not duplicated. Empty, invalid, degenerate or disconnected geometry returns a sanitized 503 instead of inventing a road segment.
 
-Route quotes contain `route_estimate_id`, `calculated_at`, `expires_at`, `traffic_aware`, `route_geometry`, `distance_km`, `duration_minutes`, and `duration_seconds`. They are held in memory and copied into the ride as `expected_route`. Ride creation validates the opaque ID against both endpoints and displayed distance/duration. Forged geometry or other unexpected create fields return 422. Expired, missing or mismatched quotes return 409 with a refresh message. The browser automatically refreshes quotes within 10 seconds of expiry before starting and refreshes the fare quote alongside them. Fare snapshots remain immutable; route duration is never charged as waiting time. Old clients can create rides without a quote, but live monitoring is unavailable for them.
+Route quotes contain `route_estimate_id`, `calculated_at`, `expires_at`, `traffic_aware`, `route_geometry`, `distance_km`, `duration_minutes`, and `duration_seconds`. They use the configured repository and are copied into the ride as `expected_route`. Ride creation validates the opaque ID against both endpoints and displayed distance/duration. Forged geometry or other unexpected create fields return 422. Expired, missing or mismatched quotes return 409 with a refresh message. The browser automatically refreshes quotes within 10 seconds of expiry before starting and refreshes the fare quote alongside them. Fare snapshots remain immutable; route duration is never charged as waiting time. Old clients can create rides without a quote, but live monitoring is unavailable for them.
 
 `ROUTE_ESTIMATE_MAX_AGE_SECONDS=300` configures quote freshness in `backend/.env`. Expiry is inclusive at 300 seconds. Existing rides keep their baseline even after the quote expires; AWS is not called continuously during rides. Current traffic can change after departure, and legitimate detours, congestion and GPS errors can produce misleading signals.
 
@@ -312,7 +323,7 @@ Route quotes contain `route_estimate_id`, `calculated_at`, `expires_at`, `traffi
 | Stop-specific accuracy | ≤30 m; worse readings cannot prove lack of movement |
 | Maximum reliable sample gap | 30 seconds; longer gaps reset accumulated evidence |
 | Excessive delay | Elapsed seconds > exact traffic duration ×1.5 +300 seconds |
-| Recent internal sample buffer | At most 60 good samples per active ride |
+| GPS history buffer | None; only the current stop anchor is retained |
 
 Route distance is the minimum distance to **segments**, not vertices, of the actual Amazon road polyline, using a local equirectangular projection centered on the GPS sample. This approximation is intended for city-scale routes, not polar or worldwide paths. A first off-route point produces POSSIBLE_DEVIATION, not DEVIATED. Poor GPS resets consecutive evidence and reports POOR/UNKNOWN, not a safety incident. Movement of at least 30 m resets the stop anchor and clears a stop; missing or imprecise samples cannot count toward the stop timer. MOVING means no prolonged stop has been established, not proof of continuous movement.
 
@@ -324,9 +335,9 @@ Keep the active page open, with location permission enabled, over localhost or H
 
 ### Privacy and storage
 
-Quotes, ride snapshots, monitoring state and the bounded recent GPS buffer exist **only in process memory**. Monitoring buffers are cleared on ride completion; everything disappears on backend restart. Use one backend worker. Precise live coordinates are not logged, saved to disk, or sent to other services. Only necessary search/routing coordinates go to Amazon Location. Monitoring endpoints return aggregates, never historical coordinate lists. The existing ride-detail API still exposes pickup/destination to anyone with a ride ID: this unauthenticated local prototype is not production access control.
+Quotes, ride snapshots and minimal monitoring state use the selected storage backend. Memory mode loses all data on restart. DynamoDB mode persists ride endpoints/expected geometry, fare reports, quotes and one stop anchor plus aggregate monitoring/counters/timestamps. The unused recent-sample buffer has been removed. There is no GPS trail, per-sample item or history endpoint. Monitoring is deleted on completion and inaccessible for completed rides. Coordinates are not logged; DynamoDB receives only the documented persistent records, and Amazon Location receives necessary search/routing coordinates. The existing ride-detail API still exposes pickup/destination to anyone with a ride ID: this unauthenticated prototype is not production access control.
 
-Production requires authentication/authorization, explicit consent, retention rules, encryption, access controls and deletion policies. DynamoDB, deployment, SOS and trusted contacts remain future work.
+Production requires authentication/authorization, explicit consent, retention rules, encryption, access controls and deletion policies. Deployment, SOS and trusted contacts remain future work.
 
 ### Repeatable offline verification
 
@@ -362,3 +373,102 @@ npm.cmd run dev
 ```
 
 Open http://localhost:3000, allow location, select a destination, check traffic-aware distance/duration and fare, then START RIDE. Keep the page open and check GPS/route/movement/timing and the latest update time. Browser developer tools can simulate a location on the returned route or three off-route readings separated by at least five seconds; no driving is required. END RIDE and submit or skip the fare. Denying location should show monitoring unavailable without ending the ride. For an SSO profile only, refresh its session separately using `aws sso login --profile ridewatch` if necessary. The new traffic/geometry request has been tested offline and should also be manually checked with the existing profile. No deployment, commit or push is part of this increment.
+
+## Persistence: memory or DynamoDB
+
+`STORAGE_BACKEND=memory` remains the recommended default until a table has been provisioned manually. No table is created, inspected or contacted on application import or `/health`. DynamoDB clients are initialized on first storage operation using the configured `AWS_REGION` and optional `AWS_PROFILE`. When the profile is absent, boto3 uses its normal credential chain; a future Lambda deployment can use its execution role without local profile files. No access-key settings are added.
+
+`app/repositories/storage.py` makes the storage choice once. Existing `RideRepository` and `FareReportRepository` contracts remain; new `RouteQuoteRepository`, `FareQuoteRepository` and `MonitoringStateRepository` abstractions have memory and DynamoDB implementations. `create_app` accepts individual repository overrides, settings, a fake DynamoDB client, providers and a clock for deterministic tests. A custom ride repository can be paired with its own monitoring repository when it requires different concurrency semantics.
+
+Fare quotes are persisted in addition to route quotes because the existing start-ride flow submits `fare_estimate_id`: keeping that ID process-local would still break when estimate and start requests reach different instances. Both quote types expire after `ROUTE_ESTIMATE_MAX_AGE_SECONDS` (300 by default). Fare snapshots already attached to rides remain immutable and do not expire.
+
+### Single-table schema and retained data
+
+The configured table has **one string partition key `pk`, no sort key and no indexes**. Billing mode is PAY_PER_REQUEST. Every item contains `entity_type` and a nested `data` map. Storage attributes are never added to API responses.
+
+| pk | entity_type | data and additional attributes |
+|---|---|---|
+| `ride#{ride_id}` | `RIDE` | Complete ride: UUID, pickup/destination, vehicle, status, start/end timestamps, expected distance/duration, route ID, expected geometry/traffic baseline, immutable fare snapshot and drop information |
+| `fare-report#{ride_id}` | `FARE_REPORT` | One completed-ride report with pickup/drop, route distance/duration, amount and report time |
+| `route-quote#{route_estimate_id}` | `ROUTE_QUOTE` | Original route request and complete route estimate, including geometry, exact seconds, calculation/expiry timestamps; numeric `ttl` |
+| `fare-quote#{fare_estimate_id}` | `FARE_QUOTE` | Original fare request, exact returned estimate and expiry; numeric `ttl` |
+| `monitoring#{ride_id}` | `MONITORING` | Latest aggregate response, off/on-route counters, one stop anchor, stopped_since, last_good_at; numeric `version` for compare-and-swap |
+
+There is **no latest-point list, recent GPS buffer, full trail or per-update item**. One hundred accepted samples update the same monitoring item 100 times. Apart from temporary quotes and an optional completed fare report, the journey occupies one ride item and at most one monitoring item. The stop anchor is still a precise coordinate and must be treated as sensitive. Monitoring state is deleted on completion. Abandoned active rides retain their minimal state until future retention/deletion policies are implemented.
+
+`dynamodb.py` uses the low-level boto3 client with explicit TypeSerializer/TypeDeserializer conversion. UUIDs, enums and UTC datetimes become strings; nested models become inspectable maps/lists, null values remain DynamoDB NULL, and JSON numeric values pass through Decimal before encoding as DynamoDB Numbers. Deserialization validates through the Pydantic schemas, including strict integer fields. No pickle, opaque binary payload or raw AWS response is stored.
+
+### Quote TTL and expiry
+
+Both temporary quote entities store `ttl = int(expires_at.timestamp())`, a numeric epoch-seconds value. Enable TTL on `ttl` using the manual command below. DynamoDB deletion is asynchronous, so services always enforce `now >= expires_at` themselves. An expired route quote returns **409** with `Route estimate expired or unavailable. Refresh route and fare estimates.` even if the item still exists. The existing frontend refreshes route and fare quotes near route expiry. TTL does not remove the expected route or fare snapshot copied into a ride.
+
+### Distributed correctness
+
+- Reads use `ConsistentRead=True`. Ride creation and fare-report insertion use `attribute_not_exists(pk)`; duplicate fare reports remain 409 without a read-before-write race.
+- Completion reads the immutable ACTIVE ride, then uses **one TransactWriteItems** to conditionally replace it only if `data.status` is ACTIVE and delete `monitoring#{id}`. Competing completions re-read the winning completed record, preserving its original ended_at, drop and fare snapshot. The initial read is never followed by an unconditional overwrite.
+- A monitoring write uses **one TransactWriteItems** containing a ConditionCheck on the ride's ACTIVE status and a version-conditional Put of the monitoring item. New state requires an absent key; subsequent writes require the previously read version and increment it. A completion that wins first makes the check fail; a location update that wins first is removed by completion. A GPS update cannot recreate monitoring for a completed ride.
+- Monitoring conflicts re-read and recalculate, with at most **3 attempts**. A fixed server receipt timestamp is used throughout an update, so retrying an older sample cannot overwrite a newer sample. Completion also has at most 3 transaction attempts. Exhausted contention or storage failures return a sanitized 503; completed-ride monitoring returns 409. AWS messages and coordinate-bearing records are not logged or exposed in errors.
+- Transaction client tokens protect identical SDK retries. Python locks protect memory mode and lazy client initialization only; DynamoDB correctness comes from conditions/transactions, not process-local locks. This targets instances using the same regional table, not multi-region global-table conflict resolution.
+
+### Manual table setup — commands for you to run later
+
+These commands are documentation only and have **not** been run. Use a provisioning-authorized identity: the current Location-only profile and the runtime policy above do not grant table creation or TTL administration. The example uses `ridewatch`; use your administrator/provisioning profile instead if appropriate. Provisioning needs CreateTable, DescribeTable, UpdateTimeToLive and DescribeTimeToLive, separately from runtime permissions. No IAM policy is modified automatically.
+
+PowerShell-compatible AWS CLI commands:
+
+```powershell
+aws dynamodb create-table `
+  --table-name ridewatch-dev `
+  --attribute-definitions AttributeName=pk,AttributeType=S `
+  --key-schema AttributeName=pk,KeyType=HASH `
+  --billing-mode PAY_PER_REQUEST `
+  --region ap-south-1 --profile ridewatch --no-cli-pager
+
+aws dynamodb wait table-exists `
+  --table-name ridewatch-dev `
+  --region ap-south-1 --profile ridewatch
+
+aws dynamodb describe-table `
+  --table-name ridewatch-dev --query Table.TableStatus --output text `
+  --region ap-south-1 --profile ridewatch --no-cli-pager
+
+aws dynamodb update-time-to-live `
+  --table-name ridewatch-dev `
+  --time-to-live-specification Enabled=true,AttributeName=ttl `
+  --region ap-south-1 --profile ridewatch --no-cli-pager
+
+aws dynamodb describe-time-to-live `
+  --table-name ridewatch-dev `
+  --region ap-south-1 --profile ridewatch --no-cli-pager
+```
+
+Wait for table status ACTIVE. TTL can remain ENABLING temporarily; do not repeatedly toggle it. See [AWS TTL CLI documentation](https://docs.aws.amazon.com/cli/latest/reference/dynamodb/update-time-to-live.html). Change `ridewatch-dev` and the region consistently across commands, configuration and the table ARN if you choose different values.
+
+### Switch modes and verify locally
+
+After provisioning the table and granting the runtime policy, edit `backend/.env`:
+
+```dotenv
+CORS_ORIGINS=["http://localhost:3000"]
+AWS_PROFILE=ridewatch
+AWS_REGION=ap-south-1
+AWS_PAGER=
+LOCATION_PROVIDER=aws
+ROUTE_ESTIMATE_MAX_AGE_SECONDS=300
+STORAGE_BACKEND=dynamodb
+DYNAMODB_TABLE_NAME=ridewatch-dev
+```
+
+Restart the backend. Process environment variables override `.env`, so clear any stale STORAGE_BACKEND override in your terminal when switching. For role-based credentials later, omit AWS_PROFILE. To return to the default, set `STORAGE_BACKEND=memory` and restart; the table name may remain configured. Switching modes does not migrate records or delete DynamoDB data. Memory-mode IDs are not available in DynamoDB mode and vice versa.
+
+Start the existing backend and frontend using the commands above. Obtain current location before destination search, create a ride, send GPS updates, restart the backend, reload the same ride URL and verify monitoring continues. End the ride and submit a fare. Two instances configured for the same table can use the same route/fare quote IDs and monitoring state. This manual DynamoDB verification has not been performed against a real table in this increment.
+
+Automated tests default explicitly to memory even if your local `.env` selects DynamoDB; the network-blocking fixture covers DynamoDB and Location. DynamoDB tests use a deterministic atomic fake plus botocore Stubber, with no local DynamoDB server. They check nested round trips, conditional inserts, concurrent completers, multi-instance quotes/monitoring, TTL application expiry, filtered Scan pagination, optimistic conflict retries, both completion/GPS race orders, safe failures and absence of GPS-history items. Frontend tests include the no-location search gate and the existing complete ride/fare flow.
+
+### Remaining limitations
+
+- No authentication/authorization, deployment, Lambda handler or API Gateway infrastructure is added. DynamoDB durability does not make this unauthenticated API suitable for production.
+- Precise ride endpoints, expected route geometry, fare-report endpoints and a stop anchor are sensitive. Full GPS trails are not persisted. Production still needs consent, retention/deletion policies, access control and an encryption policy.
+- Fare matching performs a paginated filtered Scan over this table. Filtering does not avoid reading other entities or guarantee a single snapshot across scan pages. The unchanged 200 m / 500 m algorithm is appropriate only for this MVP; production needs geospatial aggregation/indexing.
+- DynamoDB's [400 KB per-item limit](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Constraints.html) applies to route quotes and rides containing geometry. Oversized records fail safely with 503; route splitting/compression is not implemented.
+- Transactions and frequent state reads/writes incur cost. Heavy contention can return 503 after bounded retries. Application servers need synchronized clocks. There is no migration of existing memory data, automatic archival of abandoned rides, multi-region conflict strategy or full background GPS tracking.

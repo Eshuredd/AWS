@@ -15,12 +15,10 @@ Provider = Annotated[LocationProvider, Depends(get_location_provider)]
 
 @router.get("/places/search", response_model=PlaceSearchResponse)
 def search_places(provider: Provider, q: Annotated[str, Query(min_length=3, max_length=200)],
-                  lat: Latitude | None = None, lng: Longitude | None = None) -> PlaceSearchResponse:
+                  lat: Latitude, lng: Longitude) -> PlaceSearchResponse:
     query = q.strip()
     if len(query) < 3:
         raise HTTPException(422, "Search must contain at least 3 characters")
-    if (lat is None) != (lng is None):
-        raise HTTPException(422, "Supply both lat and lng for location bias")
     return PlaceSearchResponse(results=provider.search_places(query, lat, lng)[:5])
 
 
