@@ -6,7 +6,7 @@ import { startTracking } from "@/lib/live-tracking";
 import { monitoringPresentation } from "@/lib/monitoring-presentation";
 import RoutePreview from "./route-preview";
 
-export default function LiveMonitoring({ rideId, route }: { rideId: string; route: RouteEstimate }) {
+export default function LiveMonitoring({ rideId, route, onUpdate }: { rideId: string; route: RouteEstimate; onUpdate?: (state: Monitoring) => void }) {
   const [state, setState] = useState<Monitoring | null>(null);
   const [error, setError] = useState("");
   const [pollError, setPollError] = useState("");
@@ -19,6 +19,7 @@ export default function LiveMonitoring({ rideId, route }: { rideId: string; rout
       send: (sample, signal) => sendLocation(rideId, sample, signal),
       onState: value => {
         setState(value);
+        onUpdate?.(value);
         setNow(Date.now());
       },
       onError: setError,
@@ -48,7 +49,7 @@ export default function LiveMonitoring({ rideId, route }: { rideId: string; rout
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [rideId, attempt]);
+  }, [rideId, attempt, onUpdate]);
 
   const issue = error || pollError;
   const view = monitoringPresentation(state, issue, now);

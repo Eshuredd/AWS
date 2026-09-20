@@ -16,6 +16,7 @@ import DestinationSearch from "@/components/destination-search";
 import RouteEstimateCard from "@/components/route-estimate-card";
 import { useFareEstimate } from "@/lib/use-fare-estimate";
 import { useRouteEstimate } from "@/lib/use-route-estimate";
+import TrustedContacts from "@/components/trusted-contacts";
 
 export default function Home() {
   const router = useRouter();
@@ -224,6 +225,11 @@ export default function Home() {
                 </div>
               </details>
             )}
+
+            {route.estimate && <details className="vehicle-details trusted-details">
+              <summary><span className="summary-label"><span className="summary-icon"><Icon name="shield" /></span>Trusted contacts</span><span className="summary-meta">Optional</span></summary>
+              <div className="disclosure-content"><TrustedContacts /></div>
+            </details>}
 
             {error && (
               <Notice>

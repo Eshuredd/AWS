@@ -16,6 +16,7 @@ export async function mockApp(page: Page, expired = false) {
   let routes = 0;
   let updates = 0;
   let ride: Record<string, unknown> = {};
+  let shareRevoked = false;
   const fare = { estimate_id: "fare-1", supported: true, currency: "INR", official_meter: { minimum: 104, maximum: 104, source: "Telangana", effective_from: "2014-02-14", night_applied: false }, typical_reported: null };
   let routeQuote: Record<string, unknown>;
   await page.route("**/api/**", async handler => {
@@ -33,6 +34,16 @@ export async function mockApp(page: Page, expired = false) {
       expect(request.postDataJSON().fare_estimate_id).toBe("fare-1");
       ride = { ...request.postDataJSON(), id: "ride-1", status: "ACTIVE", started_at: new Date().toISOString(), ended_at: null, expected_route: routeQuote, fare_estimate: fare };
       body = ride;
+    } else if (path.endsWith("/share") && request.method() === "POST") {
+      shareRevoked = false; body = { token: "secret-token", expires_at: new Date(Date.now() + 86400000).toISOString() };
+    } else if (path === "/api/share/secret-token" && request.method() === "DELETE") {
+      shareRevoked = true; await handler.fulfill({ status: 204, body: "" }); return;
+    } else if (path === "/api/share/secret-token") {
+      if (shareRevoked) { await handler.fulfill({ status: 404, json: { detail: "expired" } }); return; }
+      body = { ride_status: ride.status || "ACTIVE", destination: ride.destination || "Secunderabad Railway Station", vehicle_number: ride.vehicle_number || null,
+        started_at: ride.started_at || new Date().toISOString(), ended_at: ride.ended_at || null, expected_distance_km: 9.2, expected_duration_minutes: 31,
+        gps_status: "GOOD", route_status: "ON_ROUTE", stop_status: "MOVING", delay_status: "ON_TIME", last_updated_at: new Date().toISOString(),
+        current_location: { latitude: 17.44, longitude: 78.50, accuracy_m: 24, updated_at: new Date().toISOString() } };
     } else if (path.endsWith("/locations") || path.endsWith("/monitoring")) {
       if (path.endsWith("/locations")) updates++;
       const poor = path.endsWith("/locations") && request.postDataJSON().accuracy_m > 100;

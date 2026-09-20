@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4, UUID
 from unittest.mock import Mock
 from concurrent.futures import ThreadPoolExecutor
@@ -15,12 +15,14 @@ from app.models.ride import Ride, RideStatus
 from app.models.fare_report import FareReport
 from app.models.quotes import RouteQuote
 from app.models.monitoring import MonitoringState
+from app.models.share import ShareSession
 from app.schemas.fare import DropLocation, TypicalFare
 from app.schemas.location import RouteRequest, RoutePoint
 from app.schemas.monitoring import LocationSample, MonitoringResponse
 from app.repositories.dynamodb import (
     DynamoDBStore, DynamoDBRideRepository, DynamoDBFareReportRepository,
     DynamoDBMonitoringStateRepository, DynamoDBRouteQuoteRepository,
+    DynamoDBShareSessionRepository,
     encode, decode, model_item, model_from_item,
 )
 from app.repositories.errors import WriteConflict, RideNotActive, StorageUnavailable
@@ -147,6 +149,19 @@ def test_route_quote_ttl_and_application_expiry(setup):
     assert app.state.storage.routes.get(ride.route_estimate_id) is not None
 
 
+def test_share_session_round_trip_and_ttl(setup):
+    client, clock, app, api, ride, _ = setup
+    created = api.post(f'/api/rides/{ride.id}/share').json()
+    token_hash = app.state.share_service.token_hash(created['token'])
+    item = client.items[f'share#{token_hash}']
+    decoded = decode(item)
+    session = model_from_item(ShareSession, item)
+    assert decoded['entity_type'] == 'SHARE_SESSION'
+    assert int(decoded['ttl']) == int(session.expires_at.timestamp())
+    assert session.ride_id == ride.id and session.expires_at == clock() + timedelta(hours=24)
+    assert created['token'] not in str(decoded)
+
+
 def sample(lat=17.45):
     return LocationSample(latitude=lat, longitude=78.50, accuracy_m=10)
 
@@ -165,7 +180,8 @@ def test_monitoring_round_trip_counters_anchor_and_no_trail(setup):
     assert state.stopped_since and state.last_good_at
     assert state.response.stop_status == 'PROLONGED_STOP'
     assert model_from_item(MonitoringState, model_item('monitoring', 'MONITORING', state)) == state
-    assert set(state.model_dump()) == {'response','version','off_count','on_count','anchor','stopped_since','last_good_at'}
+    assert set(state.model_dump()) == {'response','version','off_count','on_count','anchor','stopped_since','last_good_at','latest_location'}
+    assert state.latest_location.latitude == 17.45
     assert len([key for key in client.items if key.startswith('monitoring#')]) == 1
     assert len([key for key in client.items if key.startswith('ride#')]) == 1
     assert len(client.items) == 4  # Ride, route quote, fare quote, one monitoring item.

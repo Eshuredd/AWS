@@ -13,11 +13,13 @@ from app.models.ride import Ride, RideStatus
 from app.models.fare_report import FareReport
 from app.models.quotes import RouteQuote, FareQuote
 from app.models.monitoring import MonitoringState
+from app.models.share import ShareSession
 from app.schemas.fare import DropLocation
 from app.repositories.ride_repository import RideRepository
 from app.repositories.fare_report_repository import FareReportRepository, DuplicateFareReport
 from app.repositories.quote_repository import RouteQuoteRepository, FareQuoteRepository
 from app.repositories.monitoring_repository import MonitoringStateRepository
+from app.repositories.share_repository import ShareSessionRepository
 from app.repositories.errors import StorageUnavailable, WriteConflict, RideNotActive
 
 
@@ -232,3 +234,26 @@ class DynamoDBMonitoringStateRepository(MonitoringStateRepository):
     def delete(self, ride_id):
         # Completion already deletes atomically; this also permits idempotent cleanup.
         self.store.call("delete_item", TableName=self.store.table_name, Key=encode({"pk": f"monitoring#{ride_id}"}))
+
+
+class DynamoDBShareSessionRepository(ShareSessionRepository):
+    def __init__(self, store):
+        self.store = store
+
+    def save(self, token_hash, session):
+        self.store.insert(model_item(f"share#{token_hash}", "SHARE_SESSION", session,
+                                     ttl=int(session.expires_at.timestamp())))
+        return session
+
+    def get(self, token_hash):
+        return self.store.get(f"share#{token_hash}", ShareSession)
+
+    def revoke(self, token_hash, revoked_at):
+        session = self.get(token_hash)
+        if session is None:
+            return None
+        revoked = session.model_copy(update={"revoked_at": revoked_at})
+        self.store.call("put_item", TableName=self.store.table_name,
+                        Item=model_item(f"share#{token_hash}", "SHARE_SESSION", revoked,
+                                        ttl=int(revoked.expires_at.timestamp())))
+        return revoked

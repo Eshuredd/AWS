@@ -5,7 +5,7 @@ from app.schemas.monitoring import MonitoringResponse
 from app.services.fare_service import FareError
 from app.services.ride_service import RideNotFound
 from app.services.route_service import utc_now
-from app.models.monitoring import MonitoringState
+from app.models.monitoring import LatestLocation, MonitoringState
 from app.schemas.location import RoutePoint
 from app.repositories.monitoring_repository import InMemoryMonitoringStateRepository
 from app.repositories.errors import WriteConflict, RideNotActive, StorageUnavailable
@@ -109,6 +109,8 @@ class MonitoringService:
 
     def _advance(self, state, sample, baseline, now):
         response, rules = state.response, self.rules
+        state.latest_location = LatestLocation(latitude=sample.latitude, longitude=sample.longitude,
+                                               accuracy_m=sample.accuracy_m, received_at=now)
         response.last_updated_at = now
         gap = state.last_good_at is None or (now - state.last_good_at).total_seconds() > rules.max_sample_gap_seconds
         if gap or sample.accuracy_m > rules.good_accuracy_m:

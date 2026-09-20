@@ -134,6 +134,9 @@ Tests cover health, create/fetch, missing rides, completion and repeated complet
 | POST | `/api/route-estimate` | Traffic-aware quote, geometry, duration and expiry |
 | POST | `/api/rides/{ride_id}/locations` | Accept GPS sample and return aggregate monitoring |
 | GET | `/api/rides/{ride_id}/monitoring` | Current aggregate state, no GPS trail |
+| POST | `/api/rides/{ride_id}/share` | Create a temporary private-link bearer token |
+| GET | `/api/share/{token}` | Read-only shared trip status and latest location |
+| DELETE | `/api/share/{token}` | Revoke a shared trip link |
 | POST | `/api/fare-estimate` | Official and optional aggregated reported fares |
 | POST | `/api/rides/{ride_id}/fare-report` | Optional completed-ride fare report (201; duplicate 409) |
 | POST | `/api/rides` | Create ACTIVE ride (201) |
@@ -157,7 +160,15 @@ Vehicle number may be omitted or null. Format checks accept conventional and Bha
 
 The Lambda ASGI adapter, ZIP builder, Amplify build configuration and configurable CORS are now prepared. DynamoDB repositories are implemented; memory storage is unsuitable for Lambda and is rejected there. Cloud resources still require deliberate manual provisioning and deployment using the deployment runbook.
 
-Later increments include authentication, OCR, trusted contacts, SOS/emergency escalation and deployment.
+Later increments include authentication, OCR, provider-backed emergency escalation and deployment.
+
+## Emergency assistance and private live sharing
+
+Active rides offer a user-initiated emergency panel with `tel:112`, Web Share/copy fallback, and SMS or WhatsApp handoff for up to three trusted contacts. RideWatch never places calls or sends messages automatically. Trusted-contact names and phone numbers stay in versioned browser `localStorage` and are never sent to the backend.
+
+Live sharing creates a random 256-bit bearer token. DynamoDB stores only its SHA-256 hash in `pk=share#<hash>`, the ride ID, creation/expiry/revocation timestamps, entity type, and `ttl`; links expire within 24 hours and completed rides have a one-hour grace period. The monitoring item stores only the latest accepted latitude, longitude, accuracy, and receipt time, replacing it on each accepted update. Completion deletes monitoring state, so no GPS trail or post-ride live location is retained.
+
+The public `/share/<token>` page polls only `GET /api/share/{token}` while active. It never requests viewer geolocation, posts monitoring samples, ends rides, or exposes rider controls. Anyone holding the bearer URL can view its limited trip data until revocation or expiry; this MVP still has no rider authentication, so protect the link and stop sharing when it is no longer needed.
 
 ## Real route estimation
 

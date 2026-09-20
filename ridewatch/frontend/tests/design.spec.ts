@@ -157,6 +157,7 @@ test(`pending, warning and completion states ${width}x${height}`, async ({ page 
   await emit(page);
   await expect(page.getByRole("heading", { name:"Away from expected route" })).toBeVisible();
   await expect(page.getByText("Prolonged stop detected", { exact:true })).toBeVisible();
+  await expect(page.getByRole("button", { name:"Get help", exact:true })).toBeVisible();
   await shot(page, info, "deviation-and-delay");
   let releaseEnd!: () => void;
   const endGate = new Promise<void>(done => { releaseEnd = done; });

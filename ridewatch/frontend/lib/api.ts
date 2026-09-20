@@ -14,7 +14,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try { response = await fetch(`${base}${path}`, { ...init, cache: "no-store", signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000), headers: { "Content-Type": "application/json", ...init?.headers } }); }
   catch { throw new Error("Could not reach RideWatch. Check your connection, then try again."); }
   if (!response.ok) {
-    if (response.status === 404) throw new Error("This ride could not be found. Check the ride link and try again.");
+    if (response.status === 404) throw new Error(path.startsWith("/api/share/")
+      ? "This live trip link is unavailable or has expired."
+      : "This ride could not be found. Check the ride link and try again.");
     if (response.status === 503) {
       const body = await response.json();
       const allowed = ["Destination search is temporarily unavailable", "Unable to calculate this route"];
@@ -29,7 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       : "Please check your destination, location and vehicle number, then try again.");
     throw new Error("Something went wrong. Please try again.");
   }
-  return response.json() as Promise<T>;
+  return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }
 export const createRide = (data: CreateRide) => request<Ride>("/api/rides", { method: "POST", body: JSON.stringify(data) });
 export const getRide = (id: string, signal?: AbortSignal) => request<Ride>(`/api/rides/${encodeURIComponent(id)}`, { signal });
@@ -77,9 +79,20 @@ export type Monitoring = {
   stop_status: "UNKNOWN" | "MOVING" | "PROLONGED_STOP";
   delay_status: "UNKNOWN" | "ON_TIME" | "DELAYED";
   distance_from_route_m: number | null; last_updated_at: string | null;
+  latest_location?: Coordinates & { accuracy_m: number };
+};
+export type ShareCreated = { token: string; expires_at: string };
+export type SharedRide = Omit<Monitoring, "ride_id" | "distance_from_route_m"> & {
+  ride_status: "ACTIVE" | "COMPLETED"; destination: string; vehicle_number: string | null;
+  started_at: string; ended_at: string | null; expected_distance_km: number | null;
+  expected_duration_minutes: number | null;
+  current_location: (Coordinates & { accuracy_m: number; updated_at: string }) | null;
 };
 export const sendLocation = (id: string, data: Coordinates & { accuracy_m: number }, signal: AbortSignal) => request<Monitoring>(`/api/rides/${encodeURIComponent(id)}/locations`, { method: "POST", body: JSON.stringify(data), signal });
 export const getMonitoring = (id: string, signal: AbortSignal) => request<Monitoring>(`/api/rides/${encodeURIComponent(id)}/monitoring`, { signal });
+export const createShare = (id: string) => request<ShareCreated>(`/api/rides/${encodeURIComponent(id)}/share`, { method: "POST" });
+export const getSharedRide = (token: string, signal?: AbortSignal) => request<SharedRide>(`/api/share/${encodeURIComponent(token)}`, { signal });
+export const revokeShare = (token: string) => request<void>(`/api/share/${encodeURIComponent(token)}`, { method: "DELETE" });
 export const reportFare = (id: string, fare_paid: number) => request<{ ride_id: string; fare_paid: number; reported_at: string }>(`/api/rides/${encodeURIComponent(id)}/fare-report`, { method: "POST", body: JSON.stringify({ fare_paid }) });
 export function captureDropLocation(): Promise<DropLocation> {
   return new Promise(resolve => {

@@ -22,7 +22,7 @@ export function startTracking(options: {
         lastSent = now(); pending = true;
         try {
           const state = await send({ latitude: coords.latitude, longitude: coords.longitude, accuracy_m: coords.accuracy }, controller.signal);
-          if (!controller.signal.aborted) { onError(""); onState(state); }
+          if (!controller.signal.aborted) { onError(""); onState({ ...state, latest_location: { latitude: coords.latitude, longitude: coords.longitude, accuracy_m: coords.accuracy } }); }
         } catch {
           if (!controller.signal.aborted) onError("Live monitoring unavailable: could not update RideWatch. Retrying with the next GPS reading.");
         } finally { pending = false; }

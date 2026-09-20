@@ -214,7 +214,7 @@ Lambda's basic execution role supplies CloudWatch logging. The adapter suppresse
 
 Inspect Lambda Errors/Duration/Throttles and API Gateway 5xx/latency after deployment. `/health` proves reachability only. For a 503, verify role/table/region and Location permissions without printing private payloads. A 502 immediately after deployment commonly calls for checking ZIP root, handler, Linux architecture/runtime and CloudWatch's sanitized error class.
 
-No authentication is added. The API is publicly reachable once you deploy it; exact CORS does not prevent non-browser access. Production access control, consent, retention/deletion policies and monitoring-data safeguards remain necessary. Fare matching still uses a table Scan, large routes remain subject to DynamoDB's item limit, and custom Amplify packaging needs revalidation when Next.js changes. No cloud deployment or target-Linux execution has been performed by this task.
+No authentication is added. The API is publicly reachable once you deploy it; exact CORS does not prevent non-browser access. Shared-trip URLs are bearer credentials and can be viewed by anyone who receives them until revocation or expiry. Production access control, consent, retention/deletion policies and monitoring-data safeguards remain necessary. Fare matching still uses a table Scan, and large routes remain subject to DynamoDB's item limit. No cloud deployment or target-Linux execution has been performed by this task.
 
 ## Repeatable local validation
 
