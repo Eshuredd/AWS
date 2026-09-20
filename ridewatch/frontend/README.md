@@ -1,36 +1,26 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RideWatch frontend
 
-## Getting Started
+Next.js 16 App Router, React 19 and Tailwind 4. The visual specification lives in [DESIGN.md](../DESIGN.md); implementation evidence is in [UI-QA.md](../UI-QA.md).
 
-First, run the development server:
+## Development
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Use Node 22. Copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_API_URL` to your backend origin. Run `npm ci`, then `npm run dev`. Start the existing backend separately using the project README. No backend credentials belong in the frontend.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Architecture
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `/`: progressive pickup, destination selection, route/fare review, optional vehicle and ride creation.
+- `/ride/[rideId]`: saved ride loading, live monitoring, deliberate ending, completion and optional fare contribution.
+- Existing route/fare hooks and `lib/api.ts` retain API contracts and quote validation flow.
+- `lib/live-tracking.ts` owns the existing GPS lifecycle and throttle; `monitoring-presentation.ts` resolves display priority without changing server signals.
+- `app/globals.css` defines the small shared visual system. System fonts and inline SVG icons require no external font or UI service.
+- `route-preview.tsx` draws actual returned geometry as a labeled schematic, not a basemap, live marker or progress tracker.
+- `confirm-dialog.tsx` supplies native modal/inert behavior, deliberate initial focus, keyboard containment and focus restoration.
+- `ui.tsx` supplies the small icon set, loading skeleton and error notice.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verification
 
-## Learn More
+Run `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build`. Browser tests mock API responses and GPS; no AWS calls are made. Test data stays in `tests/fixtures.ts`, never in application components.
 
-To learn more about Next.js, take a look at the following resources:
+Playwright uses port 3100 and an isolated `.next-test` directory. It captures viewport/full-page PNGs under `test-results/`. The visual suite checks 390×844, 430×932, 768×1024 and 1440×900, with additional narrow/short viewport and reduced-motion checks. Test artifacts are ignored by Git.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+For Amplify, use `npm run build:amplify` with the HTTPS API origin configured at build time. See [DEPLOYMENT.md](../DEPLOYMENT.md); no deployment is performed by the frontend build.

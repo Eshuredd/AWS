@@ -1,28 +1,59 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import LiveMonitoring from "@/components/live-monitoring";
-import FareSummary from "@/components/fare-summary";
-import FareReportForm from "@/components/fare-report-form";
+import LiveMonitoring from "./live-monitoring";
+import FareSummary from "./fare-summary";
+import FareReportForm from "./fare-report-form";
+import ConfirmDialog from "./confirm-dialog";
+import RoutePreview from "./route-preview";
+import { Icon, Notice, Skeleton } from "./ui";
 import { captureDropLocation, endRide, getRide, formatDistance, formatDuration, type Ride } from "@/lib/api";
 export default function RideSession({ rideId }: { rideId: string }) {
+  const router = useRouter();
   const [ride, setRide] = useState<Ride | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [confirm, setConfirm] = useState<"end" | "leave" | null>(null);
   const ending = useRef(false);
+  const complete = ride?.status === "COMPLETED";
   useEffect(() => {
     const controller = new AbortController();
     getRide(rideId, controller.signal).then(value => { if (!controller.signal.aborted) setRide(value); }).catch(e => { if (!controller.signal.aborted) setError(e.message); });
     return () => controller.abort();
   }, [rideId, attempt]);
+  useEffect(() => {
+    if (!ride || complete) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [ride, complete]);
   async function finish() {
     if (ending.current) return;
-    ending.current = true; setBusy(true); setError("");
-    try { const drop = await captureDropLocation(); setRide(await endRide(rideId, drop)); } catch (e) { setError(e instanceof Error ? e.message : "Unable to end ride."); }
+    setConfirm(null); ending.current = true; setBusy(true); setError("");
+    try { const drop = await captureDropLocation(); setRide(await endRide(rideId, drop)); }
+    catch (e) { setError(e instanceof Error ? e.message : "Unable to end ride."); }
     finally { ending.current = false; setBusy(false); }
   }
-  const complete = ride?.status === "COMPLETED";
   const date = (value: string) => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  return <main className="mx-auto max-w-xl"><Link href="/" className="inline-block py-3 text-sm text-teal-700">← Back to RideWatch</Link>{error && <div className="my-4 rounded-xl bg-red-50 p-4 text-sm text-red-800" role="alert"><p>{error}</p>{!ride && <button className="secondary mt-3" onClick={() => { setError(""); setAttempt(value => value + 1); }}>Try again</button>}</div>}{!ride ? <p role="status" className="py-10">{error ? "Ride unavailable" : "Loading your ride…"}</p> : <><div className="my-6"><span className="rounded-full bg-teal-100 px-3 py-1 text-xs font-bold text-teal-800">{ride.status}</span><h1 className="mt-4 text-3xl font-bold">{complete ? "Ride completed" : "Ride in progress"}</h1><p className="mt-2 text-stone-600">{complete ? "You’ve reached the end of this ride session." : "Your ride details, all in one place."}</p></div><section className="card"><h2 className="mb-5 font-bold">Your ride</h2><dl className="space-y-5"><div><dt className="text-sm text-stone-500">Destination</dt><dd className="mt-1 break-words text-xl font-semibold">{ride.destination}</dd></div><div><dt className="text-sm text-stone-500">Vehicle</dt><dd className="mt-1 font-semibold">{ride.vehicle_number || "Not provided"}</dd></div><div><dt className="text-sm text-stone-500">Expected distance</dt><dd className="mt-1 font-semibold">{ride.expected_distance_km != null ? `${formatDistance(ride.expected_distance_km)} km` : "Not recorded"}</dd></div><div><dt className="text-sm text-stone-500">{ride.expected_route?.traffic_aware ? "Traffic-aware expected duration" : "Expected duration"}</dt><dd className="mt-1 font-semibold">{ride.expected_duration_minutes != null ? formatDuration(ride.expected_duration_minutes) : "Not recorded"}</dd></div><div><dt className="text-sm text-stone-500">Started</dt><dd className="mt-1">{date(ride.started_at)}</dd></div>{ride.ended_at && <div><dt className="text-sm text-stone-500">Ended</dt><dd className="mt-1">{date(ride.ended_at)}</dd></div>}</dl><div className="mt-5"><FareSummary estimate={ride.fare_estimate} snapshot/></div></section>{complete && ride.expected_distance_km != null && <FareReportForm rideId={rideId}/>} {!complete && <>{!busy && (ride.expected_route?.traffic_aware ? <LiveMonitoring rideId={rideId}/> : <p className="card mt-4">Live monitoring unavailable: this ride has no validated route.</p>)}<button className="primary mt-6" onClick={finish} disabled={busy}>{busy ? "ENDING RIDE…" : "END RIDE"}</button></>}{complete && <Link href="/" className="primary mt-6 block text-center">START ANOTHER RIDE</Link>}</>}</main>;
+  if (!ride) return <main id="main" tabIndex={-1} className="workspace"><div className="context"><h1>{error ? "Ride unavailable" : "Opening your ride"}</h1><Link href="/" className="text-button">Back to RideWatch</Link></div><div className="sheet">{error ? <Notice><p>{error}</p><button className="secondary" onClick={() => { setError(""); setAttempt(v => v + 1); }}>Try again</button></Notice> : <Skeleton label="Loading your ride…"/>}</div></main>;
+  const details = <details><summary>Ride details</summary><div className="disclosure-content"><dl className="detail-list"><div><dt>Vehicle</dt><dd>{ride.vehicle_number || "Not provided"}</dd></div><div><dt>Started</dt><dd>{date(ride.started_at)}</dd></div>{ride.ended_at && <div><dt>Ended</dt><dd>{date(ride.ended_at)}</dd></div>}</dl><FareSummary estimate={ride.fare_estimate} snapshot/></div></details>;
+  const metrics = <dl className="metric-pair"><div><dt>Expected distance</dt><dd>{ride.expected_distance_km != null ? `${formatDistance(ride.expected_distance_km)} km` : "Not recorded"}</dd></div><div><dt>Expected duration</dt><dd>{ride.expected_duration_minutes != null ? formatDuration(ride.expected_duration_minutes) : "Not recorded"}</dd></div></dl>;
+  return <main id="main" className="workspace enter" tabIndex={-1}>
+    <div className={`context ${complete ? "completion-context" : "session-context"}`}>
+      <div className="session-topline">{complete ? <Link href="/" className="text-button"><Icon name="back"/>Back to RideWatch</Link> : <button className="text-button" disabled={busy} onClick={() => setConfirm("leave")}><Icon name="back"/>Leave session</button>}<span className="session-label">{complete ? "Journey finished" : "Ride in progress"}</span></div>
+      {complete ? <><div className="completion-mark"><Icon name="check"/></div><h1>Ride completed</h1><p className="support">Monitoring stopped. Your ride details are saved.</p><div className="completion-route"><RoutePreview route={ride.expected_route}/></div></> : busy ? <><h1>Ending your ride</h1><p className="support status-description" role="status">Saving your drop-off location. Monitoring has paused.</p><RoutePreview route={ride.expected_route} uncertain/><p className="support">Keep this page open while your journey is saved.</p></> : ride.expected_route?.traffic_aware ? <LiveMonitoring rideId={rideId} route={ride.expected_route}/> : <><h1>Monitoring unavailable for this ride</h1><p className="support">This ride has no validated route. You can still end your session.</p></>}
+    </div>
+    <div className="sheet session-panel">
+      <p className="eyebrow">{complete ? "Your destination" : "Heading to"}</p><h2 className="session-destination">{ride.destination}</h2>
+      {metrics}
+      {error && <Notice>{error} Your ride is still active. Try ending it again.</Notice>}
+      {complete ? <div className="stack">{ride.ended_at && <p className="support">Ended {date(ride.ended_at)}</p>}{ride.expected_distance_km != null ? <FareReportForm rideId={rideId}/> : <Link href="/" className="primary">Start another ride</Link>}{details}</div> : <>
+        {details}<p className="support">Keep this page open for location checks. RideWatch cannot provide emergency assistance.</p>
+        <div className="action-dock"><button className="primary" onClick={() => setConfirm("end")} disabled={busy}>{busy ? "Ending ride…" : "End ride"}</button><p className="help">{busy ? "Keep this page open while we save your ride." : "Monitoring stops when you end the ride."}</p></div>
+      </>}
+    </div>
+    {confirm && <ConfirmDialog title={confirm === "end" ? "End this ride?" : "Leave this session?"} description={confirm === "end" ? "Monitoring will stop and your ride will be marked complete." : "Monitoring pauses when you leave this page. Your ride stays active; keep the ride link to return."} confirm={confirm === "end" ? "End ride" : "Leave session"} cancel={confirm === "end" ? "Keep riding" : "Keep ride open"} onClose={() => setConfirm(null)} onConfirm={confirm === "end" ? finish : () => router.push("/")}/>}
+  </main>;
 }

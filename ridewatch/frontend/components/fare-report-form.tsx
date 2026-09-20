@@ -1,7 +1,8 @@
 "use client";
 import { useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { reportFare } from "@/lib/api";
-
+import { Icon, Notice } from "./ui";
 export default function FareReportForm({ rideId }: { rideId: string }) {
   const [paid, setPaid] = useState("");
   const [status, setStatus] = useState<"ready" | "busy" | "sent" | "skipped">("ready");
@@ -17,13 +18,11 @@ export default function FareReportForm({ rideId }: { rideId: string }) {
     catch (e) { setError(e instanceof Error ? e.message : "Unable to submit fare."); setStatus("ready"); }
     finally { submitting.current = false; }
   }
-  if (status === "skipped") return null;
-  return <section className="card mt-4" aria-live="polite">{status === "sent" ? <p>Thanks — your fare report will help improve estimates for similar rides.</p> : <form onSubmit={submit}>
-    <label htmlFor="fare-paid" className="mb-3 block font-bold">How much did you pay?</label>
-    <div className="flex items-center gap-3"><span aria-hidden="true">₹</span><input id="fare-paid" type="number" inputMode="decimal" min="0.01" max="10000" step="0.01" required value={paid} onChange={e => setPaid(e.target.value)} disabled={status === "busy"} aria-describedby="fare-help"/></div>
-    <p id="fare-help" className="mt-2 text-xs text-stone-500">Optional. Report the total fare you actually paid in rupees.</p>
-    {error && <p role="alert" className="mt-3 text-sm text-red-700">{error}</p>}
-    <button className="primary mt-4" disabled={status === "busy"}>{status === "busy" ? "SUBMITTING…" : "SUBMIT FARE"}</button>
-    <button type="button" className="secondary mt-3 w-full" disabled={status === "busy"} onClick={() => setStatus("skipped")}>Skip</button>
-  </form>}</section>;
+  if (status === "sent" || status === "skipped") return <div className="confirmation-message enter"><div role="status">{status === "sent" ? <><span className="completion-mark"><Icon name="check"/></span><h2>Thanks for sharing.</h2><p className="support">Your fare report will help improve estimates for similar rides.</p></> : <><h2>You’re all done.</h2><p className="support">Your ride details are saved here.</p></>}</div><Link href="/" className="primary">Start another ride</Link></div>;
+  return <form onSubmit={submit} className="fare-form">
+    <div><p className="eyebrow">One small contribution · Optional</p><h2>How much did you pay?</h2><p className="help">Help the next rider know what to expect.</p></div>
+    <div><label htmlFor="fare-paid">Total fare paid</label><div className="fare-input"><span aria-hidden="true">₹</span><input id="fare-paid" type="number" inputMode="decimal" min="0.01" max="10000" step="0.01" required value={paid} onChange={e => setPaid(e.target.value)} disabled={status === "busy"} aria-invalid={!!error} aria-describedby="fare-help"/></div><p id="fare-help" className="help">Total paid in rupees, up to ₹10,000.</p></div>
+    {error && <Notice>{error}</Notice>}
+    <div><button className="primary" disabled={status === "busy"}>{status === "busy" ? "Submitting…" : "Submit fare"}</button><button type="button" className="text-button" disabled={status === "busy"} onClick={() => setStatus("skipped")}>Skip</button></div>
+  </form>;
 }

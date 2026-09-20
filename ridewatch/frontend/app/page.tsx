@@ -2,6 +2,8 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { calculateRoute, estimateFare, createRide, normalizeVehicle, validVehicle, type Place } from "@/lib/api";
+import RoutePreview from "@/components/route-preview";
+import { Icon, Notice, Skeleton } from "@/components/ui";
 import DestinationSearch from "@/components/destination-search";
 import RouteEstimateCard from "@/components/route-estimate-card";
 import { useFareEstimate } from "@/lib/use-fare-estimate";
@@ -16,6 +18,9 @@ export default function Home() {
   const fare = useFareEstimate(location, destination, route.estimate);
   const [vehicle, setVehicle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [vehicleOpen, setVehicleOpen] = useState(false);
+  const [progress, setProgress] = useState("Starting ride…");
   const submitting = useRef(false);
   const [error, setError] = useState("");
   const ready = !!location && !!destination && !!route.estimate && !!fare.estimate;
@@ -37,18 +42,44 @@ export default function Home() {
       let routeQuote = route.estimate;
       let fareQuote = fare.estimate;
       if (Date.now() >= Date.parse(routeQuote.expires_at) - 10000) {
+        setProgress("Updating estimate…");
         const signal = new AbortController().signal;
         routeQuote = await calculateRoute(location, destination, signal);
         fareQuote = await estimateFare(location, destination, routeQuote, signal);
       }
+      setProgress("Starting ride…");
       const ride = await createRide({ start_lat: location.latitude, start_lng: location.longitude, destination: destination.label, destination_lat: destination.latitude, destination_lng: destination.longitude, expected_distance_km: routeQuote.distance_km, expected_duration_minutes: routeQuote.duration_minutes, route_estimate_id: routeQuote.route_estimate_id, fare_estimate_id: fareQuote.estimate_id, vehicle_number: normalizeVehicle(vehicle) || null }); router.push(`/ride/${ride.id}`); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to start ride."); submitting.current = false; setBusy(false); }
   }
-  return <main><div className="mb-8"><p className="mb-3 text-xs font-bold tracking-[.18em] text-teal-700">YOUR RIDE. A LITTLE MORE REASSURANCE.</p><h1 className="max-w-xl text-3xl font-bold leading-tight tracking-tight sm:text-5xl">Know your ride<br className="hidden sm:block"/> before you get in.</h1><p className="mt-4 max-w-lg leading-7 text-stone-600">Street-hailed auto or a local cab. Start with the details, wherever you book your ride.</p></div>
-    <div className="grid gap-6 md:grid-cols-[1.15fr_1fr]"><form onSubmit={start} className="card space-y-6"><div className="flex items-center justify-between"><h2 className="text-lg font-bold">Let’s get you ready</h2><span className="text-xs text-stone-500">01 / RIDE DETAILS</span></div>
-      <div><h3 className="mb-3 text-sm font-bold">Current location</h3><div className="rounded-2xl bg-stone-50 p-4"><p className="mb-3 text-sm text-stone-600" role="status">{locating ? "Finding your location…" : location ? "Current location detected" : "Add your starting point with one tap."}</p><button type="button" onClick={locate} disabled={locating || busy} className="secondary w-full">{locating ? "Finding location…" : location ? "Refresh my location" : "Use my location"}</button></div>{locationError && <p role="alert" className="mt-2 text-sm text-red-700">{locationError}</p>}</div>
-      <DestinationSearch location={location} selected={destination} onSelect={setDestination} disabled={busy}/>
-      <div><label htmlFor="vehicle" className="mb-2 block text-sm font-bold">Vehicle number <span className="font-normal text-stone-500">(optional)</span></label><input id="vehicle" placeholder="TS 09 AB 1234" value={vehicle} onChange={e => setVehicle(e.target.value.toUpperCase())} onBlur={() => setVehicle(normalizeVehicle(vehicle))} maxLength={30} aria-invalid={!vehicleValid} aria-describedby="vehicle-help" disabled={busy}/><p id="vehicle-help" className={`mt-2 text-xs ${vehicleValid ? "text-stone-500" : "text-red-700"}`}>{vehicleValid ? "Have the number plate handy? Add it to your ride." : "Check the number, e.g. TS 09 AB 1234 or 22 BH 1234 AA."}</p></div>
-      {error && <div role="alert" className="text-sm text-red-700"><p>{error}</p><button type="button" className="secondary mt-2" onClick={() => { setError(""); route.retry(); }}>Refresh route and fare</button></div>}<div><button className="primary" disabled={!ready || !vehicleValid || busy || locating}>{busy ? "STARTING RIDE…" : "START RIDE"}</button><p className="mt-3 text-center text-xs text-stone-500">{ready ? "Your starting location will be saved with this session." : "Select a destination and get route and fare estimates to start."}</p></div></form>
-      <aside className="space-y-5"><RouteEstimateCard fare={fare} estimate={route.estimate} loading={route.loading} error={route.error} retry={route.retry}/><div className="px-3"><h2 className="text-sm font-bold">For the rides outside an app</h2><p className="mt-2 text-sm leading-6 text-stone-600">No booking required. Just a place to keep your ride details together.</p><p className="mt-4 text-xs leading-5 text-stone-500">Live GPS checks provide route, movement and timing signals during your ride. These are not emergency guarantees.</p></div></aside></div></main>;
+  const reviewing = !!destination && !editing;
+  return <main id="main" className="workspace" tabIndex={-1}>
+    <div className={`context ${reviewing ? "review-context" : "intro"}`}>
+      <p className="eyebrow">{reviewing ? "Before you go" : "Plan your ride"}</p>
+      <h1>{reviewing ? "Review your ride" : "Where are you heading?"}</h1>
+      {reviewing ? route.estimate ? <RoutePreview route={route.estimate}/> : <Skeleton label={route.error ? "Your route needs another try." : "Finding the way…"}/> : <p className="support">Confirm your location, then choose a destination.</p>}
+    </div>
+    <form onSubmit={start} className="sheet stack" aria-label="Prepare your ride">
+      {reviewing && <div className="selection-summary enter"><div className="selected-journey"><p className="support">From your current location</p><h2>{destination.label}</h2></div><button type="button" className="text-button" disabled={busy} onClick={() => setEditing(true)}>Edit</button></div>}
+      <div hidden={reviewing}>
+        <div className="journey-fields">
+          <div className="journey-stop"><p className="field-label">Current location</p>
+            {location ? <div className="pickup-row"><p className="pickup-value" role="status">Location confirmed</p><button type="button" className="text-button" onClick={locate} disabled={locating || busy}>{locating ? "Finding…" : "Refresh"}</button></div> : <><p className="support">Find destinations near your pickup.</p><button type="button" onClick={locate} disabled={locating || busy} className="primary wide" style={{ marginTop: 12 }}><Icon name="location"/>{locating ? "Finding location…" : "Use my location"}</button></>}
+            {locationError && <div className="help"><Notice>{locationError}</Notice></div>}
+          </div>
+          <div className="journey-stop"><DestinationSearch location={location} selected={destination} onSelect={place => { setDestination(place); if (place) { setEditing(false); document.getElementById("destination")?.blur(); } }} disabled={busy || locating}/></div>
+        </div>
+        {editing && destination && <button type="button" className="text-button wide" onClick={() => setEditing(false)}>Back to estimate</button>}
+      </div>
+      {reviewing && <div>
+        <RouteEstimateCard fare={fare} estimate={route.estimate} loading={route.loading} error={route.error} retry={route.retry}/>
+        {route.estimate && <details className="vehicle-details" open={vehicleOpen || !vehicleValid} onToggle={e => setVehicleOpen(e.currentTarget.open)}><summary><span className="summary-label">{vehicle && vehicleValid ? "Vehicle number added" : "Add vehicle number"}</span><span className="summary-meta">Optional</span></summary><div className="disclosure-content">
+          <div><label htmlFor="vehicle">Vehicle number</label><input id="vehicle" placeholder="TS 09 AB 1234" value={vehicle} onChange={e => setVehicle(e.target.value.toUpperCase())} onBlur={() => setVehicle(normalizeVehicle(vehicle))} maxLength={30} aria-invalid={!vehicleValid} aria-describedby="vehicle-help" disabled={busy}/>
+          <p id="vehicle-help" className={`help ${vehicleValid ? "" : "error-text"}`}>{!vehicleValid ? "Check the number, e.g. TS 09 AB 1234 or 22 BH 1234 AA." : vehicle ? <span className="accepted"><Icon name="check"/>Number ready</span> : "Add the number plate if you have it handy."}</p></div>
+        </div></details>}
+        {error && <Notice><p>{error}</p><button type="button" className="secondary" onClick={() => { setError(""); route.retry(); }}>Refresh route and fare</button></Notice>}
+        <div className="action-dock"><button className="primary" disabled={!ready || !vehicleValid || busy || locating}>{busy ? progress : "Start ride"}</button><p className="help" role="status">{busy ? "Keep this page open." : !vehicleValid ? "Check the vehicle number to continue." : !ready ? "Waiting for route and fare estimates." : "Starting location saved when you start."}</p></div>
+      </div>}
+      {!reviewing && <p className="support">Location checks begin when you start your ride.</p>}
+    </form>
+  </main>;
 }

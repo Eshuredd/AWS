@@ -12,13 +12,13 @@ const base = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replac
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try { response = await fetch(`${base}${path}`, { ...init, cache: "no-store", signal: init?.signal ? AbortSignal.any([init.signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000), headers: { "Content-Type": "application/json", ...init?.headers } }); }
-  catch { throw new Error("Could not reach RideWatch. Check your connection and that the backend is running, then try again."); }
+  catch { throw new Error("Could not reach RideWatch. Check your connection, then try again."); }
   if (!response.ok) {
-    if (response.status === 404) throw new Error("This ride could not be found. Local sessions disappear when the backend restarts.");
+    if (response.status === 404) throw new Error("This ride could not be found. Check the ride link and try again.");
     if (response.status === 503) {
       const body = await response.json();
       const allowed = ["Destination search is temporarily unavailable", "Unable to calculate this route"];
-      throw new Error(allowed.includes(body.detail) ? body.detail : "Location service is temporarily unavailable");
+      throw new Error(allowed.includes(body.detail) ? body.detail : "RideWatch is temporarily unavailable. Please try again.");
     }
     if (response.status === 409) {
       const body = await response.json();

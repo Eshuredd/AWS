@@ -1,6 +1,6 @@
 # RideWatch design direction
 
-Status: design specification only. No redesign implemented. Audited 19 September 2026 against the current frontend, including deployment preparation. Project root is `ridewatch/`; the Git repository root is its parent.
+Status: implemented 20 September 2026. See [UI-QA.md](UI-QA.md) for validation and implementation notes. The audit below records the pre-redesign frontend on 19 September 2026, including deployment preparation. Project root is `ridewatch/`; the Git repository root is its parent.
 
 ## Product decision
 
@@ -227,7 +227,7 @@ No marketing hero in the task, stock map, random illustration, gradient heading,
 
 ## UI implementation plan — ordered by user impact
 
-This is a future implementation sequence, not authorization to execute it in this task. Read the installed Next.js guides required by `frontend/AGENTS.md` before modifying frontend code.
+This is the original implementation sequence, subsequently authorized and implemented on 20 September 2026. Read the installed Next.js guides required by `frontend/AGENTS.md` before modifying frontend code.
 
 | Order | Deliverable / existing files | Acceptance |
 |---|---|---|
@@ -253,6 +253,6 @@ Regression coverage must retain existing six tests' behavior, updating selectors
 
 Use populated reported-fare fixtures only when explicitly presenting a simulated demo; never imply synthetic reports are real users. Show real live-data mode separately. A missing report range is also a deliberate, polished state. Do not put the raw geometry, precise GPS values or sensitive ride IDs in demo logs.
 
-## Scope and validation boundary
+## Original audit scope and validation boundary
 
-This document supplies the audit, final direction, design tokens, interaction rules, implementation order and demo selection. Current app files are unchanged. The browser inspection used mocks and demonstrates existing layout/flow only; it does not validate the proposed redesign. No user research, real-device testing, new map provider, backend work, deployment or framework migration occurred. Those distinctions should remain explicit when presenting the design.
+This document supplies the audit, final direction, design tokens, interaction rules, implementation order and demo selection. At the audit stage, app files were unchanged. That browser inspection used mocks and demonstrated the pre-redesign layout/flow only; implementation validation is now recorded separately in UI-QA.md. No user research, real-device testing, new map provider, backend work, deployment or framework migration occurred. Those distinctions should remain explicit when presenting the design.

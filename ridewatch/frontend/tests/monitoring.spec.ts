@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { mockApp, startRide } from "./fixtures";
 import { startTracking } from "../lib/live-tracking";
 import type { Monitoring } from "../lib/api";
 
@@ -52,68 +53,6 @@ test("watcher ignores late responses and handles missing browser support", async
   expect(error).toContain("no geolocation support");
 });
 
-async function mockApp(page: Page, expired = false) {
-  await page.addInitScript(() => {
-    const control: { starts: number; clears: number; initialOptions?: PositionOptions; emit: (accuracy: number) => void; fail: (code: number) => void } = { starts: 0, clears: 0, emit: () => {}, fail: () => {} };
-    Object.assign(window, { gpsTest: control });
-    Object.defineProperty(navigator, "geolocation", { value: {
-      getCurrentPosition(success: PositionCallback, _failure: PositionErrorCallback, options: PositionOptions) { control.initialOptions = options; success({ coords: { latitude: 17.44, longitude: 78.49, accuracy: 10 } } as GeolocationPosition); },
-      watchPosition(success: PositionCallback, failure: PositionErrorCallback) {
-        control.starts++;
-        control.emit = (accuracy: number) => success({ coords: { latitude: 17.44, longitude: 78.50, accuracy } } as GeolocationPosition);
-        control.fail = (code: number) => failure({ code } as GeolocationPositionError);
-        return control.starts;
-      }, clearWatch() { control.clears++; },
-    } });
-  });
-  let routes = 0;
-  let updates = 0;
-  let ride: Record<string, unknown> = {};
-  const fare = { estimate_id: "fare-1", supported: true, currency: "INR", official_meter: { minimum: 104, maximum: 104, source: "Telangana", effective_from: "2014-02-14", night_applied: false }, typical_reported: null };
-  let routeQuote: Record<string, unknown>;
-  await page.route("**/api/**", async handler => {
-    const request = handler.request();
-    const path = new URL(request.url()).pathname;
-    let body: unknown;
-    if (path === "/api/places/search") body = { results: [{ id: "place", label: "Test Station", latitude: 17.44, longitude: 78.51 }] };
-    else if (path === "/api/route-estimate") {
-      routes++;
-      routeQuote = { route_estimate_id: `route-${routes}`, distance_km: 9.2, duration_minutes: 31, duration_seconds: 1801, traffic_aware: true, calculated_at: new Date().toISOString(), expires_at: new Date(Date.now() + (expired && routes === 1 ? -1 : 300000)).toISOString(), route_geometry: [{ latitude: 17.44, longitude: 78.49 }, { latitude: 17.44, longitude: 78.51 }] };
-      body = routeQuote;
-    } else if (path === "/api/fare-estimate") body = fare;
-    else if (path === "/api/rides") {
-      expect(request.postDataJSON().route_estimate_id).toBe(`route-${routes}`);
-      expect(request.postDataJSON().fare_estimate_id).toBe("fare-1");
-      ride = { ...request.postDataJSON(), id: "ride-1", status: "ACTIVE", started_at: new Date().toISOString(), ended_at: null, expected_route: routeQuote, fare_estimate: fare };
-      body = ride;
-    } else if (path.endsWith("/locations") || path.endsWith("/monitoring")) {
-      if (path.endsWith("/locations")) updates++;
-      const poor = path.endsWith("/locations") && request.postDataJSON().accuracy_m > 100;
-      body = { ride_id: "ride-1", gps_status: poor ? "POOR" : "GOOD", route_status: poor ? "UNKNOWN" : "ON_ROUTE", stop_status: poor ? "UNKNOWN" : "MOVING", delay_status: "ON_TIME", distance_from_route_m: poor ? null : 10, last_updated_at: new Date().toISOString() };
-    } else if (path.endsWith("/end")) {
-      expect(request.postDataJSON().drop_location_source).toBe("GPS");
-      ride = { ...ride, status: "COMPLETED", ended_at: new Date().toISOString() }; body = ride;
-    } else if (path.endsWith("/fare-report")) body = { ride_id: "ride-1", fare_paid: 120, reported_at: new Date().toISOString() };
-    else body = ride;
-    await handler.fulfill({ json: body });
-  });
-  return { routes: () => routes, updates: () => updates };
-}
-
-async function startRide(page: Page) {
-  await page.goto("/");
-  await expect(page.getByLabel("Where are you going?")).toBeDisabled();
-  await expect(page.getByText("Add your current location before searching for a destination.")).toBeVisible();
-  await page.getByRole("button", { name: "Use my location" }).click();
-  expect(await page.evaluate(() => (window as unknown as { gpsTest: { initialOptions: PositionOptions } }).gpsTest.initialOptions)).toEqual({ enableHighAccuracy: false, timeout: 25000, maximumAge: 60000 });
-  await expect(page.getByLabel("Where are you going?")).toBeEnabled();
-  await page.getByLabel("Where are you going?").fill("Station");
-  await page.getByRole("button", { name: "Test Station" }).click();
-  await page.getByRole("button", { name: "START RIDE", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Ride in progress" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Live monitoring" })).toBeVisible();
-}
-
 test("destination search waits for current location and sends both coordinates", async ({ page }) => {
   await mockApp(page);
   const searches: URL[] = [];
@@ -128,7 +67,7 @@ test("destination search waits for current location and sends both coordinates",
   await page.getByRole("button", { name: "Use my location" }).click();
   await page.getByLabel("Where are you going?").fill("Station");
   await page.clock.fastForward(1000);
-  await expect(page.getByRole("button", { name: "Test Station" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "Secunderabad Railway Station" })).toBeVisible();
   expect(searches).toHaveLength(1);
   expect(searches[0].searchParams.get("lat")).toBe("17.44");
   expect(searches[0].searchParams.get("lng")).toBe("78.49");
@@ -159,25 +98,27 @@ test("destination, expired quote refresh, monitoring, completion and fare report
   await page.evaluate(() => (window as unknown as { gpsTest: { emit: (accuracy: number) => void } }).gpsTest.emit(10));
   await expect(page.getByText("On expected route", { exact: true })).toBeVisible();
   expect(calls.updates()).toBe(1);
-  await page.getByRole("button", { name: "END RIDE", exact: true }).click();
+  await page.getByRole("button", { name: "End ride", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "End ride", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ride completed" })).toBeVisible();
   const gps = await page.evaluate(() => (window as unknown as { gpsTest: { starts: number; clears: number } }).gpsTest);
   expect(gps.clears).toBe(gps.starts);
-  await page.getByLabel("How much did you pay?").fill("120");
-  await page.getByRole("button", { name: "SUBMIT FARE", exact: true }).click();
-  await expect(page.getByText(/your fare report will help/)).toBeVisible();
+  await page.getByLabel("Total fare paid").fill("120");
+  await page.getByRole("button", { name: "Submit fare", exact: true }).click();
+  await expect(page.getByText(/Your fare report will help/)).toBeVisible();
 });
 
 test("poor signal and permission failure keep ride active; retry and unmount clean up", async ({ page }) => {
   await mockApp(page);
   await startRide(page);
   await page.evaluate(() => (window as unknown as { gpsTest: { emit: (accuracy: number) => void } }).gpsTest.emit(200));
-  await expect(page.getByText("Poor signal", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Location signal is weak" })).toBeVisible();
   await page.evaluate(() => (window as unknown as { gpsTest: { fail: (code: number) => void } }).gpsTest.fail(1));
   await expect(page.getByText(/Permission denied/)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Ride in progress" })).toBeVisible();
+  await expect(page.getByText("Ride in progress", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Restart monitoring" }).click();
-  await page.getByRole("link", { name: "Back to RideWatch" }).click();
+  await page.getByRole("button", { name: "Leave session", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Leave session", exact: true }).click();
   await expect(page.getByRole("button", { name: "Use my location" })).toBeVisible();
   const gps = await page.evaluate(() => (window as unknown as { gpsTest: { starts: number; clears: number } }).gpsTest);
   expect(gps.clears).toBe(gps.starts);
