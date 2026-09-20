@@ -1,0 +1,220 @@
+/* RideWatch manual dark mode.
+   Imported after globals.css and map-history.css so these overrides win cleanly. */
+
+.theme-toggle {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin-left: 5px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-soft);
+  color: var(--accent-strong);
+}
+
+.theme-toggle svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --canvas: #0b1714;
+  --surface: #10211c;
+  --surface-soft: #152a24;
+  --ink: #edf7f3;
+  --muted: #9dafaa;
+  --muted-strong: #c2d0cb;
+  --line: #243a33;
+  --line-strong: #355048;
+  --accent: #65c9ac;
+  --accent-strong: #91e0c8;
+  --accent-soft: #163d33;
+  --accent-wash: #102f28;
+  --caution: #f2bd67;
+  --caution-soft: #362a12;
+  --danger: #ff939d;
+  --danger-soft: #3b1d23;
+  --raised: 0 22px 65px rgb(0 0 0 / 34%);
+  --soft-shadow: 0 10px 30px rgb(0 0 0 / 24%);
+}
+
+html[data-theme="dark"] body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .brand-mark {
+  background: var(--surface-soft);
+  color: var(--accent);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 24%);
+}
+
+html[data-theme="dark"] input {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+html[data-theme="dark"] input:hover:not(:disabled) {
+  border-color: #587169;
+}
+
+html[data-theme="dark"] input::placeholder {
+  color: #71867f;
+}
+
+html[data-theme="dark"] input:disabled {
+  background: #13231f;
+  color: var(--muted);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .sheet {
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .trust-note {
+  background: rgb(16 33 28 / 78%);
+}
+
+html[data-theme="dark"] .primary,
+html[data-theme="dark"] .location-button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #082019;
+  box-shadow: 0 8px 20px rgb(0 0 0 / 24%);
+}
+
+html[data-theme="dark"] .primary:hover:not(:disabled),
+html[data-theme="dark"] .location-button:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #071b16;
+}
+
+html[data-theme="dark"] .primary:disabled {
+  background: #263a34;
+  border-color: #263a34;
+  color: #73867f;
+}
+
+html[data-theme="dark"] .secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+
+html[data-theme="dark"] .secondary:hover:not(:disabled) {
+  background: var(--surface-soft);
+  border-color: #577168;
+}
+
+html[data-theme="dark"] .button-arrow {
+  background: rgb(7 27 22 / 16%);
+}
+
+html[data-theme="dark"] .search-results li + li {
+  border-top-color: var(--line);
+}
+
+html[data-theme="dark"] .notice {
+  color: #ffb4bb;
+}
+
+html[data-theme="dark"] .flow-step {
+  color: #72867f;
+}
+
+html[data-theme="dark"] .route-preview,
+html[data-theme="dark"] .route-map-fallback {
+  background: #102a23;
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .route-preview.uncertain {
+  background: #17231f;
+  color: #91a39d;
+}
+
+html[data-theme="dark"] .route-preview-badge {
+  background: var(--surface-soft);
+}
+
+html[data-theme="dark"] .route-start-ring,
+html[data-theme="dark"] .route-end-ring,
+html[data-theme="dark"] .route-start {
+  fill: var(--surface);
+}
+
+html[data-theme="dark"] .route-map-shell {
+  background: #13241f;
+}
+
+html[data-theme="dark"] .route-map-loading {
+  background:
+    linear-gradient(135deg, rgb(16 33 28 / 88%), rgb(21 42 36 / 92%)),
+    var(--surface-soft);
+}
+
+html[data-theme="dark"] .route-map-marker {
+  border-color: var(--surface);
+  box-shadow: 0 2px 10px rgb(0 0 0 / 45%);
+}
+
+html[data-theme="dark"] .route-map-marker-start {
+  background: var(--surface);
+}
+
+html[data-theme="dark"] .route-preview-map .maplibregl-canvas {
+  filter: brightness(.72) contrast(1.08) saturate(.82);
+}
+
+html[data-theme="dark"] .fare-spotlight.has-reports {
+  border-color: #295c4e;
+}
+
+html[data-theme="dark"] .skeleton {
+  background: #243a33;
+}
+
+html[data-theme="dark"] .skip-link {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .sos-button:hover:not(:disabled) {
+  background: #4a2228;
+}
+
+html[data-theme="dark"] .emergency-call-promoted {
+  box-shadow: 0 0 0 4px rgb(255 147 157 / 14%);
+}
+
+@media (max-width: 599px) {
+  html[data-theme="dark"] .action-dock {
+    background: rgb(16 33 28 / 96%);
+    border-top-color: var(--line);
+    box-shadow: 0 -12px 34px rgb(0 0 0 / 24%);
+  }
+
+  .theme-toggle {
+    margin-left: 0;
+    margin-right: 7px;
+  }
+}

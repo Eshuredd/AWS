@@ -5,6 +5,7 @@ import HeaderNav from "@/components/header-nav";
 import RecentRideRecorder from "@/components/recent-ride-recorder";
 import "./globals.css";
 import "./map-history.css";
+import "./dark-mode.css";
 
 export const metadata: Metadata = {
   title: "RideWatch | Know your ride",
@@ -18,9 +19,31 @@ export const viewport: Viewport = {
   themeColor: "#F3F6F4",
 };
 
+const themeScript = `
+(() => {
+  try {
+    const saved = localStorage.getItem("ridewatch.theme");
+    const theme =
+      saved === "light" || saved === "dark"
+        ? saved
+        : window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  } catch {
+    document.documentElement.dataset.theme = "light";
+  }
+})();
+`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body>
         <a className="skip-link" href="#main">Skip to content</a>
         <RecentRideRecorder />

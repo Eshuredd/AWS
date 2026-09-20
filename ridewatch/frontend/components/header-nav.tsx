@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import ThemeToggle from "./theme-toggle";
 
 const links = [
   { href: "/", label: "Plan ride" },
@@ -24,37 +25,48 @@ export default function HeaderNav() {
     return () => document.removeEventListener("keydown", close);
   }, [open]);
 
-  const current = (href: string) => href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+  const current = (href: string) =>
+    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 
-  return <div className="header-navigation" ref={menu}>
-    <nav className="desktop-nav" aria-label="Primary navigation">
-      {links.map(link => (
-        <Link key={link.href} href={link.href} aria-current={current(link.href) ? "page" : undefined}>
-          {link.label}
-        </Link>
-      ))}
-    </nav>
-    <button
-      type="button"
-      className="menu-button"
-      aria-label="Open navigation menu"
-      aria-expanded={open}
-      aria-controls="mobile-navigation"
-      onClick={() => setOpen(value => !value)}
-    >
-      <span aria-hidden="true" /><span aria-hidden="true" /><span aria-hidden="true" />
-    </button>
-    {open && <nav id="mobile-navigation" className="mobile-nav" aria-label="Mobile navigation">
-      {links.map(link => (
-        <Link
-          key={link.href}
-          href={link.href}
-          aria-current={current(link.href) ? "page" : undefined}
-          onClick={() => setOpen(false)}
-        >
-          {link.label === "Plan ride" ? "Plan a ride" : link.label}
-        </Link>
-      ))}
-    </nav>}
-  </div>;
+  return (
+    <div className="header-navigation" ref={menu}>
+      <nav className="desktop-nav" aria-label="Primary navigation">
+        {links.map(link => (
+          <Link key={link.href} href={link.href} aria-current={current(link.href) ? "page" : undefined}>
+            {link.label}
+          </Link>
+        ))}
+      </nav>
+
+      <ThemeToggle />
+
+      <button
+        type="button"
+        className="menu-button"
+        aria-label="Open navigation menu"
+        aria-expanded={open}
+        aria-controls="mobile-navigation"
+        onClick={() => setOpen(value => !value)}
+      >
+        <span aria-hidden="true" />
+        <span aria-hidden="true" />
+        <span aria-hidden="true" />
+      </button>
+
+      {open && (
+        <nav id="mobile-navigation" className="mobile-nav" aria-label="Mobile navigation">
+          {links.map(link => (
+            <Link
+              key={link.href}
+              href={link.href}
+              aria-current={current(link.href) ? "page" : undefined}
+              onClick={() => setOpen(false)}
+            >
+              {link.label === "Plan ride" ? "Plan a ride" : link.label}
+            </Link>
+          ))}
+        </nav>
+      )}
+    </div>
+  );
 }
