@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { createShare, revokeShare, type Monitoring, type Ride } from "@/lib/api";
 import { useTrustedContacts } from "@/lib/use-trusted-contacts";
 import TrustedContacts from "./trusted-contacts";
@@ -97,6 +98,7 @@ export default function EmergencyAssistance({ ride, monitoring, open, onClose, s
         <a className="secondary" target="_blank" rel="noreferrer" href={`https://wa.me/${item.phone.replace(/^\+/, "")}?text=${encodeURIComponent(prepared)}`}>WhatsApp</a>
       </> : <><button type="button" className="secondary" onClick={() => contact(item.phone, "sms")}>SMS</button><button type="button" className="secondary" onClick={() => contact(item.phone, "whatsapp")}>WhatsApp</button></>}</span></div>;
     })}</div>}
+    {contacts.length === 0 && <div className="emergency-empty-contacts"><p>No trusted contacts added.</p><Link className="secondary wide" href="/trusted-contacts">Add trusted contact</Link></div>}
     <button type="button" className="secondary wide" onClick={copy}>Copy emergency details</button>
     <button type="button" className="text-button" onClick={() => setManage(value => !value)}>{manage ? "Hide contact manager" : "Manage trusted contacts"}</button>
     {manage && <TrustedContacts compact />}

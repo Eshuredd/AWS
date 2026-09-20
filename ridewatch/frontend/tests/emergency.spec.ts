@@ -46,7 +46,7 @@ test("SOS dialog supports 112, web share, contact links, copying, and revocation
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("link", { name: "Call 112" })).toHaveAttribute("href", "tel:112");
   await dialog.getByRole("button", { name: "Share live trip" }).click();
-  expect(await page.evaluate(() => (window as unknown as { shareCalls: ShareData[] }).shareCalls[0].url)).toContain("/share/secret-token");
+  await expect.poll(() => page.evaluate(() => (window as unknown as { shareCalls: ShareData[] }).shareCalls[0]?.url)).toContain("/share/secret-token");
   const sms = dialog.getByRole("link", { name: "SMS" });
   const whatsapp = dialog.getByRole("link", { name: "WhatsApp" });
   expect(decodeURIComponent((await sms.getAttribute("href"))!)).toContain("sms:+919876543210?body=I may need help");

@@ -2,6 +2,7 @@
 
 import { useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   calculateRoute,
   estimateFare,
@@ -228,7 +229,7 @@ export default function Home() {
 
             {route.estimate && <details className="vehicle-details trusted-details">
               <summary><span className="summary-label"><span className="summary-icon"><Icon name="shield" /></span>Trusted contacts</span><span className="summary-meta">Optional</span></summary>
-              <div className="disclosure-content"><TrustedContacts /></div>
+              <div className="disclosure-content"><TrustedContacts /><Link className="text-button manage-contacts-link" href="/trusted-contacts">Manage trusted contacts</Link></div>
             </details>}
 
             {error && (

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Icon } from "@/components/ui";
+import Link from "next/link";
+import HeaderNav from "@/components/header-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -21,17 +23,14 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <a className="skip-link" href="#main">Skip to content</a>
         <div className="app-shell">
           <header className="app-header">
-            <span className="brand" aria-label="RideWatch">
+            <Link href="/" className="brand" aria-label="RideWatch home">
               <span className="brand-mark"><Icon name="route" /></span>
               <span className="brand-copy">
                 <strong>RideWatch</strong>
                 <span>Ride safety companion</span>
               </span>
-            </span>
-            <span className="header-note">
-              <span className="header-note-dot" aria-hidden="true" />
-              Booking-independent
-            </span>
+            </Link>
+            <HeaderNav />
           </header>
           {children}
         </div>
