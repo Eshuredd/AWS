@@ -53,7 +53,7 @@ export default function DestinationSearch({ location, selected, onSelect, disabl
       {current?.error && <Notice><p>{current.error}</p><button type="button" className="secondary" onClick={() => setAttempt(v => v + 1)}>Retry search</button></Notice>}
       {current?.done && !current.error && !results.length && <p className="help">No destinations found. Try a nearby landmark or a more specific name.</p>}
       {expanded && <ul id="destination-results" role="listbox" aria-label="Destination suggestions" className="search-results">
-        {results.map((place, index) => <li id={`place-${index}`} key={`${place.id}-${index}`} role="option" aria-selected={index === active} onPointerDown={e => e.preventDefault()} onClick={() => choose(place)}>{place.label}</li>)}
+        {results.map((place, index) => <li id={`place-${index}`} key={`${place.id}-${index}`} role="option" aria-selected={index === active} onPointerDown={e => { e.preventDefault(); choose(place); }}>{place.label}</li>)}
       </ul>}
     </>}
   </div>;
