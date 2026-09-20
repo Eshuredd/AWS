@@ -44,22 +44,25 @@ function uberLink(start: Coordinates, destination: Place) {
 function olaLink(start: Coordinates, destination: Place) {
   const token = process.env.NEXT_PUBLIC_OLA_XAPP_TOKEN?.trim();
 
-  if (!token) {
-    return { href: "https://book.olacabs.com/", routePrefilled: false };
+  const params = new URLSearchParams({
+    landing_page: "bk",
+    bk_act: "rn",
+  });
+
+  if (token) {
+    params.set("utm_source", token);
+    params.set("lat", String(start.latitude));
+    params.set("lng", String(start.longitude));
+    params.set("drop_lat", String(destination.latitude));
+    params.set("drop_lng", String(destination.longitude));
+    params.set("address", "Current location");
+    params.set("drop_address", destination.label);
   }
 
-  const url = new URL("https://olawebcdn.com/assets/ola-universal-link.html");
-  url.searchParams.set("utm_source", token);
-  url.searchParams.set("lat", String(start.latitude));
-  url.searchParams.set("lng", String(start.longitude));
-  url.searchParams.set("drop_lat", String(destination.latitude));
-  url.searchParams.set("drop_lng", String(destination.longitude));
-  url.searchParams.set("address", "Current location");
-  url.searchParams.set("drop_address", destination.label);
-  url.searchParams.set("landing_page", "bk");
-  url.searchParams.set("bk_act", "rn");
-
-  return { href: url.toString(), routePrefilled: true };
+  return {
+    href: `olacabs://app/launch?${params.toString()}`,
+    routePrefilled: Boolean(token),
+  };
 }
 
 export default function RideProviderLauncher({
@@ -77,7 +80,7 @@ export default function RideProviderLauncher({
         name: "Uber",
         badge: "U",
         href: uberLink(start, destination),
-        description: "Pickup and destination passed from RideWatch.",
+        description: "Opens Uber with pickup and destination passed from RideWatch.",
         routePrefilled: true,
       },
       {
@@ -85,15 +88,15 @@ export default function RideProviderLauncher({
         badge: "O",
         href: ola.href,
         description: ola.routePrefilled
-          ? "Pickup and destination passed from RideWatch."
-          : "Opens Ola. Route prefill needs Ola partner access.",
+          ? "Opens Ola with pickup and destination passed from RideWatch."
+          : "Opens the Ola app. Route prefill needs Ola partner access.",
         routePrefilled: ola.routePrefilled,
       },
       {
         name: "Rapido",
         badge: "R",
-        href: "https://www.rapido.bike/",
-        description: "Opens Rapido. Re-enter the route there.",
+        href: "rapido://",
+        description: "Opens the Rapido app. Re-enter the route there.",
         routePrefilled: false,
       },
     ];
@@ -123,8 +126,6 @@ export default function RideProviderLauncher({
               key={provider.name}
               className={styles.provider}
               href={provider.href}
-              target={provider.href.startsWith("http") ? "_blank" : undefined}
-              rel={provider.href.startsWith("http") ? "noreferrer" : undefined}
             >
               <span className={styles.badge} aria-hidden="true">{provider.badge}</span>
               <span className={styles.copy}>
@@ -133,9 +134,9 @@ export default function RideProviderLauncher({
               </span>
               <span
                 className={provider.routePrefilled ? styles.ready : styles.manual}
-                aria-label={provider.routePrefilled ? "Route prefilled" : "Manual route entry"}
+                aria-label={provider.routePrefilled ? "Route prefilled" : "App opens without route prefill"}
               >
-                {provider.routePrefilled ? "Route ready" : "Open only"}
+                {provider.routePrefilled ? "Route ready" : "App only"}
               </span>
             </a>
           ))}
