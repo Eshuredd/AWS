@@ -10,9 +10,9 @@ applications:
             - npm ci
         build:
           commands:
-            - npm run build:amplify
+            - npm run build
       artifacts:
-        baseDirectory: .amplify-hosting
+        baseDirectory: .next
         files:
           - '**/*'
       cache:

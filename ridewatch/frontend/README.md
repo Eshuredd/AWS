@@ -1,6 +1,6 @@
 # RideWatch frontend
 
-Next.js 16 App Router, React 19 and Tailwind 4. The visual specification lives in [DESIGN.md](../DESIGN.md); implementation evidence is in [UI-QA.md](../UI-QA.md).
+Next.js 15 App Router, React 19 and Tailwind 4. The visual specification lives in [DESIGN.md](../DESIGN.md); implementation evidence is in [UI-QA.md](../UI-QA.md).
 
 ## Development
 
@@ -23,4 +23,4 @@ Run `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build`. Br
 
 Playwright uses port 3100 and an isolated `.next-test` directory. It captures viewport/full-page PNGs under `test-results/`. The visual suite checks 390×844, 430×932, 768×1024 and 1440×900, with additional narrow/short viewport and reduced-motion checks. Test artifacts are ignored by Git.
 
-For Amplify, use `npm run build:amplify` with the HTTPS API origin configured at build time. See [DEPLOYMENT.md](../DEPLOYMENT.md); no deployment is performed by the frontend build.
+For Amplify, use the native Next.js build with the HTTPS API origin configured at build time. See [DEPLOYMENT.md](../DEPLOYMENT.md); no deployment is performed by the frontend build.

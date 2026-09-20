@@ -1,20 +1,14 @@
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
+import nextPlugin from "@next/eslint-plugin-next";
 
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    ".next-test/**",
-    ".amplify-hosting/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
-
-export default eslintConfig;
+export default [
+  {
+    plugins: { "@next/next": nextPlugin },
+    rules: nextPlugin.configs.recommended.rules,
+  },
+  {
+    ignores: [
+      ".next/**", ".next-test/**", ".amplify-hosting/**", "out/**",
+      "build/**", "next-env.d.ts",
+    ],
+  },
+];

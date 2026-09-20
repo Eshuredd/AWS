@@ -6,7 +6,7 @@ Status: **prepared and tested locally; not deployed**. DynamoDB persistence was 
 
 ```text
 Browser over HTTPS
-  → Amplify Hosting (Next.js 16 standalone, Node 22)
+  → Amplify Hosting (Next.js 15 SSR, Node 22)
   → API Gateway HTTP API ($default route/stage, payload 2.0)
   → Lambda (Python 3.12 / x86_64)
   → Mangum → existing FastAPI app
@@ -19,7 +19,7 @@ Browser over HTTPS
 - Initial Lambda settings: Python 3.12, x86_64, **512 MB, 25-second timeout**, no VPC, no provisioned concurrency. These are starting values to measure, not performance guarantees. The browser's API deadline is 20 seconds, so unusually slow calls can still time out; inspect duration/error metrics before tuning. Keep storage in DynamoDB; Lambda rejects memory mode to avoid intermittent data loss.
 - **FastAPI owns CORS. Leave API Gateway CORS unconfigured.** Its catch-all Lambda route handles OPTIONS as well as application methods. Allow exact origins only; no wildcard. CORS is browser policy, not authentication.
 - The browser API URL is compiled into Next.js at build time. This runbook uses the API's origin with a `$default` stage, so no stage path or rewrite is necessary. The client removes trailing slashes before adding `/api/...`.
-- Current Amplify automatic Next.js documentation lists versions 12–15; this repo uses 16.3.5. We preserve the version and produce Amplify's framework-independent `.amplify-hosting` deployment bundle from Next's standalone server. This is a custom packaging path, not a claim that Amplify's automatic Next.js 16 adapter is supported. Validate the first real Amplify build before treating it as production-ready.
+- Amplify's native Next.js SSR deployment currently supports this project's Next.js 15 build. The frontend emits the standard `.next` output expected by Amplify.
 
 References: [Mangum adapter](https://mangum.fastapiexpert.com/adapter/), [Lambda Python ZIP packaging](https://docs.aws.amazon.com/lambda/latest/dg/python-package.html), [Amplify Next.js support](https://docs.aws.amazon.com/amplify/latest/userguide/ssr-amplify-support.html), [Amplify deployment specification](https://docs.aws.amazon.com/amplify/latest/userguide/ssr-deployment-specification.html).
 
@@ -154,7 +154,7 @@ Build configuration:
 | App root / AMPLIFY_MONOREPO_APP_ROOT | `ridewatch/frontend` |
 | Node | 22.x (`nvm install 22`, `nvm use 22`) |
 | Install | `npm ci` |
-| Build | `npm run build:amplify` |
+| Build | `npm run build` |
 | Artifact directory | `.amplify-hosting` relative to app root |
 | NEXT_PUBLIC_API_URL | Exact `$apiUrl` HTTPS origin, no `/api` or stage suffix |
 
@@ -228,13 +228,11 @@ npm.cmd run typecheck
 npm.cmd run build
 # Offline bundle validation uses a placeholder URL intercepted by Playwright.
 $env:NEXT_PUBLIC_API_URL = "https://example.execute-api.ap-south-1.amazonaws.com/"
-npm.cmd run build:amplify
-$env:TEST_AMPLIFY_BUNDLE = "1"
+npm.cmd run build
 npm.cmd run test
-Remove-Item Env:TEST_AMPLIFY_BUNDLE
 Remove-Item Env:NEXT_PUBLIC_API_URL
 cd ..
 .\scripts\build-lambda.ps1
 ```
 
-Tests use fake AWS clients/Stubber, an HTTP API v2 event passed to Mangum, and simulated browser GPS. No automated test contacts AWS. The bundle smoke test runs the generated standalone server on port 3100 with mocked API responses; the actual Amplify entrypoint binds port 3000 as required.
+Tests use fake AWS clients/Stubber, an HTTP API v2 event passed to Mangum, and simulated browser GPS. No automated test contacts AWS. Amplify uses its native Next.js SSR deployment with the `.next` build output.
