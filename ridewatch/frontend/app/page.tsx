@@ -18,6 +18,7 @@ import RouteEstimateCard from "@/components/route-estimate-card";
 import { useFareEstimate } from "@/lib/use-fare-estimate";
 import { useRouteEstimate } from "@/lib/use-route-estimate";
 import TrustedContacts from "@/components/trusted-contacts";
+import RideProviderLauncher from "@/components/ride-provider-launcher";
 
 export default function Home() {
   const router = useRouter();
@@ -194,6 +195,10 @@ export default function Home() {
         {reviewing && (
           <div className="review-panel">
             <RouteEstimateCard fare={fare} estimate={route.estimate} loading={route.loading} error={route.error} retry={route.retry} />
+
+            {location && destination && route.estimate && fare.estimate && (
+              <RideProviderLauncher start={location} destination={destination} />
+            )}
 
             {route.estimate && (
               <details className="vehicle-details" open={vehicleOpen || !vehicleValid} onToggle={event => setVehicleOpen(event.currentTarget.open)}>

@@ -198,8 +198,24 @@ html[data-theme="dark"] .skip-link {
   color: var(--ink);
 }
 
+html[data-theme="dark"] .sos-button {
+  background: #3b1d23;
+  border-color: #bd6670;
+  color: #ffd9dd;
+  box-shadow: 0 6px 16px rgb(0 0 0 / 18%);
+}
+
 html[data-theme="dark"] .sos-button:hover:not(:disabled) {
   background: #4a2228;
+  border-color: var(--danger);
+  color: #fff1f2;
+}
+
+html[data-theme="dark"] .sos-button:disabled {
+  background: #2b2022;
+  border-color: #5d4145;
+  color: #9f8588;
+  box-shadow: none;
 }
 
 html[data-theme="dark"] .emergency-call-promoted {
