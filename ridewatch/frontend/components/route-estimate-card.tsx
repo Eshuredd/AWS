@@ -18,7 +18,6 @@ export default function RouteEstimateCard({ estimate, loading, error, retry, far
               <p className="section-kicker">Trip snapshot</p>
               <h3>What to expect</h3>
             </div>
-            <span className="estimate-ready"><Icon name="check" />Ready</span>
           </div>
 
           <dl className="metric-pair">

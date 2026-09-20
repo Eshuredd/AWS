@@ -59,6 +59,10 @@ html[data-theme="dark"] body {
   color: var(--ink);
 }
 
+html[data-theme="dark"] .app-header {
+  border-bottom-color: var(--line-strong);
+}
+
 html[data-theme="dark"] .brand-mark {
   background: var(--surface-soft);
   color: var(--accent);
@@ -89,8 +93,22 @@ html[data-theme="dark"] .sheet {
   border-color: var(--line);
 }
 
+html[data-theme="dark"] .sheet.plan-form-flat {
+  border-color: transparent;
+}
+
+html[data-theme="dark"] .sheet.session-panel {
+  border-color: transparent;
+}
+
+html[data-theme="dark"] .session-panel .action-dock {
+  background: transparent;
+  border-top-color: transparent;
+  box-shadow: none;
+}
+
 html[data-theme="dark"] .trust-note {
-  background: rgb(16 33 28 / 78%);
+  background: transparent;
 }
 
 html[data-theme="dark"] .primary,
@@ -141,19 +159,30 @@ html[data-theme="dark"] .flow-step {
   color: #72867f;
 }
 
+html[data-theme="dark"] .flow-step.current {
+  color: var(--ink);
+}
+
+html[data-theme="dark"] .flow-step.current b {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #082019;
+}
+
 html[data-theme="dark"] .route-preview,
 html[data-theme="dark"] .route-map-fallback {
   background: #102a23;
   border-color: var(--line);
 }
 
+html[data-theme="dark"] .route-preview-map {
+  background: transparent;
+  border-color: transparent;
+}
+
 html[data-theme="dark"] .route-preview.uncertain {
   background: #17231f;
   color: #91a39d;
-}
-
-html[data-theme="dark"] .route-preview-badge {
-  background: var(--surface-soft);
 }
 
 html[data-theme="dark"] .route-start-ring,
@@ -186,7 +215,8 @@ html[data-theme="dark"] .route-preview-map .maplibregl-canvas {
 }
 
 html[data-theme="dark"] .fare-spotlight.has-reports {
-  border-color: #295c4e;
+  background: transparent;
+  border-color: transparent;
 }
 
 html[data-theme="dark"] .skeleton {

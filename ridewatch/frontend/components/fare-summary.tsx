@@ -1,10 +1,12 @@
 import { type FareEstimate } from "@/lib/api";
+import { Icon } from "./ui";
 
 const money = (value: number) => `\u20B9${value.toLocaleString("en-IN")}`;
 
 export default function FareSummary({ estimate, snapshot = false }: { estimate: FareEstimate | null; snapshot?: boolean }) {
   const official = estimate?.official_meter;
   const typical = estimate?.typical_reported;
+  const fareNotice = `Estimate, not a guaranteed fare.${official?.night_applied ? " Includes 1.5x night rate." : ""}`;
 
   const typicalValue = typical
     ? `${money(typical.minimum)}\u2013${money(typical.maximum)}`
@@ -21,7 +23,6 @@ export default function FareSummary({ estimate, snapshot = false }: { estimate: 
           <p className="section-kicker">Fare context</p>
           <h3>Know the range before you go</h3>
         </div>
-        <span className="fare-currency">INR</span>
       </div>
 
       <div className={`fare-spotlight ${typical ? "has-reports" : ""}`}>
@@ -36,7 +37,13 @@ export default function FareSummary({ estimate, snapshot = false }: { estimate: 
 
       <dl className="fare-lines">
         <div className="fare-line">
-          <dt>Official meter estimate</dt>
+          <dt className="fare-meter-label">
+            <span>Official meter estimate</span>
+            <button type="button" className="fare-info-trigger" aria-label={fareNotice}>
+              <Icon name="info" />
+            </button>
+            <span className="fare-tooltip" role="tooltip">{fareNotice}</span>
+          </dt>
           <dd>
             {official
               ? money(official.minimum)
@@ -44,8 +51,6 @@ export default function FareSummary({ estimate, snapshot = false }: { estimate: 
           </dd>
         </div>
       </dl>
-
-      <p className="help">Estimate, not a guaranteed fare.{official?.night_applied ? " Includes 1.5x night rate." : ""}</p>
 
       <details>
         <summary>Estimate details</summary>

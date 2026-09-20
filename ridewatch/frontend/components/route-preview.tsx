@@ -10,6 +10,7 @@ type MapInstance = {
   addSource: (id: string, source: unknown) => void;
   addLayer: (layer: unknown) => void;
   fitBounds: (bounds: BoundsInstance, options: { padding: number; maxZoom: number; duration: number }) => void;
+  addControl: (control: unknown, position: "bottom-right") => void;
   remove: () => void;
 };
 type MarkerInstance = {
@@ -31,6 +32,7 @@ type MapLibreNamespace = {
   }) => MapInstance;
   Marker: new (options: { element: HTMLElement; anchor: "center" }) => MarkerInstance;
   LngLatBounds: new (southWest: LngLat, northEast: LngLat) => BoundsInstance;
+  NavigationControl: new (options: { showCompass: boolean; showZoom: boolean }) => unknown;
 };
 
 declare global {
@@ -172,12 +174,13 @@ export default function RoutePreview({ route, uncertain = false }: { route: Rout
         style: MAP_STYLE,
         center: first,
         zoom: 13,
-        attributionControl: true,
+        attributionControl: false,
         dragRotate: false,
         pitchWithRotate: false,
         scrollZoom: false,
         cooperativeGestures: true,
       });
+      map.addControl(new maplibre.NavigationControl({ showCompass: false, showZoom: true }), "bottom-right");
 
       map.on("load", () => {
         if (cancelled || !map) return;
@@ -245,12 +248,8 @@ export default function RoutePreview({ route, uncertain = false }: { route: Rout
       <div className="route-preview-head">
         <figcaption>
           <span className="route-preview-title">Expected route</span>
-          <span className="route-preview-subtitle">Map preview · not turn-by-turn navigation</span>
+          <span className="route-preview-subtitle">Map preview</span>
         </figcaption>
-        <span className="route-preview-badge">
-          <span className="route-preview-badge-dot" aria-hidden="true" />
-          AWS route
-        </span>
       </div>
 
       <div className="route-map-shell">
@@ -263,6 +262,15 @@ export default function RoutePreview({ route, uncertain = false }: { route: Rout
         <span><i className="endpoint-start" />Start</span>
         <span><i className="endpoint-end" />Destination</span>
       </div>
+      <p className="route-map-attribution">
+        <a href="https://maplibre.org/" target="_blank" rel="noreferrer">MapLibre</a>
+        <span aria-hidden="true"> · </span>
+        <a href="https://openfreemap.org/" target="_blank" rel="noreferrer">OpenFreeMap</a>
+        <span aria-hidden="true"> · </span>
+        <a href="https://openmaptiles.org/" target="_blank" rel="noreferrer">OpenMapTiles</a>
+        <span aria-hidden="true"> · </span>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a>
+      </p>
     </figure>
   );
 }

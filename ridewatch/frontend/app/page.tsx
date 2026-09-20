@@ -138,8 +138,7 @@ export default function Home() {
         )}
       </div>
 
-      <form onSubmit={start} className="sheet stack" aria-label="Prepare your ride">
-        <span className="sheet-handle" aria-hidden="true" />
+      <form onSubmit={start} className="sheet stack plan-form-flat" aria-label="Prepare your ride">
 
         {reviewing && (
           <div className="selection-summary enter">
@@ -247,17 +246,15 @@ export default function Home() {
             <div className="action-dock">
               <button className="primary start-button" disabled={!ready || !vehicleValid || busy || locating}>
                 <span>{busy ? progress : "Start ride"}</span>
-                {!busy && <span className="button-arrow" aria-hidden="true">-&gt;</span>}
+                {!busy && <span className="button-arrow" aria-hidden="true">→</span>}
               </button>
-              <p className="help" role="status">
+              {(busy || !vehicleValid || !ready) && <p className="help" role="status">
                 {busy
                   ? "Keep this page open."
                   : !vehicleValid
                     ? "Check the vehicle number to continue."
-                    : !ready
-                      ? "Waiting for route and fare estimates."
-                      : "Starting location saved when you start."}
-              </p>
+                    : "Waiting for route and fare estimates."}
+              </p>}
             </div>
           </div>
         )}

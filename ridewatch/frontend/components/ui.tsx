@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type IconName = "route" | "location" | "check" | "back" | "shield" | "clock" | "car";
+type IconName = "route" | "location" | "check" | "back" | "shield" | "clock" | "car" | "info";
 
 export function Icon({ name }: { name: IconName }) {
   const paths: Record<IconName, string> = {
@@ -11,6 +11,7 @@ export function Icon({ name }: { name: IconName }) {
     shield: "M12 3 5.5 5.7v5.8c0 4.1 2.7 7.2 6.5 9.5 3.8-2.3 6.5-5.4 6.5-9.5V5.7L12 3Z",
     clock: "M12 6v6l4 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
     car: "M5 16h14l-1.1-5.2a2 2 0 0 0-2-1.6H8.1a2 2 0 0 0-2 1.6L5 16Zm2 0v2m10-2v2M8.5 13h.01m6.99 0h.01",
+    info: "M12 11v5m0-8h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z",
   };
 
   return (
