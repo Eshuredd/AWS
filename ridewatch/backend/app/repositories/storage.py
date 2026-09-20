@@ -6,10 +6,12 @@ from app.repositories.quote_repository import (
 )
 from app.repositories.monitoring_repository import MonitoringStateRepository, InMemoryMonitoringStateRepository
 from app.repositories.share_repository import ShareSessionRepository, InMemoryShareSessionRepository
+from app.repositories.sos_repository import SosDispatchRepository, InMemorySosDispatchRepository
 from app.repositories.dynamodb import (
     DynamoDBStore, DynamoDBRideRepository, DynamoDBFareReportRepository,
     DynamoDBRouteQuoteRepository, DynamoDBFareQuoteRepository, DynamoDBMonitoringStateRepository,
     DynamoDBShareSessionRepository,
+    DynamoDBSosDispatchRepository,
 )
 
 
@@ -21,9 +23,11 @@ class Repositories:
     fares: FareQuoteRepository
     monitoring: MonitoringStateRepository
     shares: ShareSessionRepository
+    sos_dispatches: SosDispatchRepository
 
 
-def create_storage(settings, clock, *, rides=None, reports=None, routes=None, fares=None, monitoring=None, shares=None, client=None):
+def create_storage(settings, clock, *, rides=None, reports=None, routes=None, fares=None, monitoring=None, shares=None,
+                   sos_dispatches=None, client=None):
     """One mode decision. Explicit repository injections take precedence."""
     if settings.storage_backend == "memory":
         rides = rides if rides is not None else InMemoryRideRepository()
@@ -33,6 +37,7 @@ def create_storage(settings, clock, *, rides=None, reports=None, routes=None, fa
             fares if fares is not None else InMemoryFareQuoteRepository(),
             monitoring if monitoring is not None else InMemoryMonitoringStateRepository(rides),
             shares if shares is not None else InMemoryShareSessionRepository(),
+            sos_dispatches if sos_dispatches is not None else InMemorySosDispatchRepository(clock),
         )
     store = DynamoDBStore(settings.dynamodb_table_name, settings.aws_region, settings.aws_profile, client)
     return Repositories(
@@ -42,4 +47,5 @@ def create_storage(settings, clock, *, rides=None, reports=None, routes=None, fa
         fares if fares is not None else DynamoDBFareQuoteRepository(store),
         monitoring if monitoring is not None else DynamoDBMonitoringStateRepository(store),
         shares if shares is not None else DynamoDBShareSessionRepository(store),
+        sos_dispatches if sos_dispatches is not None else DynamoDBSosDispatchRepository(store),
     )

@@ -7,7 +7,7 @@ export default [
   },
   {
     ignores: [
-      ".next/**", ".next-test/**", ".amplify-hosting/**", "out/**",
+      ".next/**", ".next-dev/**", ".next-test/**", ".amplify-hosting/**", "out/**",
       "build/**", "next-env.d.ts",
     ],
   },

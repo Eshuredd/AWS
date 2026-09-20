@@ -4,6 +4,13 @@
     "STORAGE_BACKEND": "dynamodb",
     "DYNAMODB_TABLE_NAME": "ridewatch",
     "ROUTE_ESTIMATE_MAX_AGE_SECONDS": "300",
-    "CORS_ORIGINS": "[\"http://localhost:3000\",\"https://main.YOUR_AMPLIFY_APP_ID.amplifyapp.com\"]"
+    "CORS_ORIGINS": "[\"http://localhost:3000\",\"https://main.YOUR_AMPLIFY_APP_ID.amplifyapp.com\"]",
+    "SMS_PROVIDER": "disabled",
+    "SMS_DRY_RUN": "false",
+    "PUBLIC_APP_URL": "https://main.YOUR_AMPLIFY_APP_ID.amplifyapp.com",
+    "SMS_ORIGINATION_IDENTITY": "",
+    "SMS_CONFIGURATION_SET": "",
+    "SMS_INDIA_ENTITY_ID": "",
+    "SMS_INDIA_TEMPLATE_ID": ""
   }
 }

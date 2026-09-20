@@ -15,6 +15,11 @@
       "Effect": "Allow",
       "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:ConditionCheckItem"],
       "Resource": "arn:aws:dynamodb:ap-south-1:ACCOUNT_ID:table/ridewatch"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "sms-voice:SendTextMessage",
+      "Resource": "*"
     }
   ]
 }

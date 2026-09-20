@@ -1,8 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 from app.api.rides import router
 from app.api.share import router as share_router
+from app.api.sos import router as sos_router
 from app.api.location import router as location_router
 from app.location.base import LocationProvider, LocationError
 from app.location.amazon_location import AmazonLocationProvider
@@ -19,18 +22,21 @@ from app.services.monitoring_service import MonitoringService, MonitoringRules
 from app.repositories.storage import create_storage
 from app.repositories.errors import StorageUnavailable, WriteConflict
 from app.services.share_service import ShareNotActive, ShareNotFound, ShareService
+from app.services.sos_service import SmsNotConfigured, SosConflict, SosService
+from app.sms.aws import AwsSmsProvider
 
 
 def create_app(repository: RideRepository | None = None, location_provider: LocationProvider | None = None,
                fare_repository: FareReportRepository | None = None, fare_provider: FareProvider | None = None,
                clock=utc_now, monitoring_rules=MonitoringRules(), *, settings: Settings | None = None,
                route_quote_repository=None, fare_quote_repository=None, monitoring_repository=None,
-               share_repository=None,
+               share_repository=None, sos_dispatch_repository=None, sms_provider=None,
                dynamodb_client=None) -> FastAPI:
     settings = settings if settings is not None else Settings()
     storage = create_storage(settings, clock, rides=repository, reports=fare_repository,
                              routes=route_quote_repository, fares=fare_quote_repository,
-                             monitoring=monitoring_repository, shares=share_repository, client=dynamodb_client)
+                             monitoring=monitoring_repository, shares=share_repository,
+                             sos_dispatches=sos_dispatch_repository, client=dynamodb_client)
     application = FastAPI(title="RideWatch API", version="0.1.0")
     application.state.storage = storage
     application.state.ride_repository = storage.rides
@@ -41,6 +47,7 @@ def create_app(repository: RideRepository | None = None, location_provider: Loca
     application.include_router(fare_router)
     application.include_router(router)
     application.include_router(share_router)
+    application.include_router(sos_router)
     application.include_router(location_router)
     application.state.location_provider = location_provider if location_provider is not None else AmazonLocationProvider(settings.aws_region, profile=settings.aws_profile)
     application.state.clock = clock
@@ -48,6 +55,12 @@ def create_app(repository: RideRepository | None = None, location_provider: Loca
     application.state.monitoring_service = MonitoringService(storage.rides, clock, monitoring_rules, storage.monitoring)
     application.state.share_service = ShareService(storage.rides, storage.monitoring, storage.shares, clock,
                                                    application.state.monitoring_service)
+    configured_sms = sms_provider
+    if configured_sms is None and settings.sms_provider == "aws":
+        configured_sms = AwsSmsProvider(settings)
+    application.state.sos_service = SosService(storage.rides, storage.sos_dispatches,
+                                               application.state.share_service, configured_sms,
+                                               settings.public_app_url, clock)
 
     @application.exception_handler(StorageUnavailable)
     async def storage_unavailable(request: Request, error: StorageUnavailable):
@@ -56,6 +69,20 @@ def create_app(repository: RideRepository | None = None, location_provider: Loca
     @application.exception_handler(WriteConflict)
     async def storage_conflict(request: Request, error: WriteConflict):
         return JSONResponse(status_code=409, content={"detail": "RideWatch state changed. Please retry."})
+
+    @application.exception_handler(SmsNotConfigured)
+    async def sms_not_configured(request: Request, error: SmsNotConfigured):
+        return JSONResponse(status_code=503, content={"detail": str(error)})
+
+    @application.exception_handler(SosConflict)
+    async def sos_conflict(request: Request, error: SosConflict):
+        return JSONResponse(status_code=409, content={"detail": str(error)})
+
+    @application.exception_handler(RequestValidationError)
+    async def request_validation_error(request: Request, error: RequestValidationError):
+        if request.url.path.endswith("/sos"):
+            return JSONResponse(status_code=422, content={"detail": "Invalid SOS request"})
+        return await request_validation_exception_handler(request, error)
 
     @application.exception_handler(FareError)
     async def fare_error(request: Request, error: FareError):

@@ -19,7 +19,7 @@ export default function TrustedContacts({ compact = false, page = false }: { com
     setAdding(false); setEditing(null);
   };
   return <div className={`trusted-contacts ${compact ? "trusted-contacts-compact" : ""}`}>
-    {!page && <p className="help">Trusted contacts are stored only on this device.</p>}
+    {!page && <p className="help">Trusted contacts are stored in this browser on this device. When you send an SOS, selected phone numbers are sent securely to RideWatch only to deliver the emergency SMS. RideWatch does not store them.</p>}
     {!storageAvailable && <p className="error-text" role="status">Browser storage is unavailable. Contacts cannot be saved.</p>}
     {page && contacts.length === 0 && !adding && <div className="contacts-empty"><h2>No trusted contacts yet.</h2><p className="support">Add someone you may want to share a live trip with.</p></div>}
     {contacts.length > 0 && <ul className="contact-list">{contacts.map(contact => <li key={contact.id}>
@@ -33,6 +33,6 @@ export default function TrustedContacts({ compact = false, page = false }: { com
       <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setAdding(false)}>Cancel</button><button type="button" className="primary" onClick={submit}>Save contact</button></div>
     </div> : contacts.length < maxContacts && <button type="button" className="secondary add-contact-button" onClick={() => begin()}>{page ? "+ Add trusted contact" : "Add trusted contact"}</button>}
     {page && contacts.length === maxContacts && <p className="help" role="status">Maximum of 3 trusted contacts reached.</p>}
-    {page && <p className="contacts-privacy">Trusted contacts are stored only on this device.<br />RideWatch never sends them to the server.</p>}
+    {page && <p className="contacts-privacy">Trusted contacts are stored in this browser on this device.<br />When you send an SOS, selected phone numbers are sent securely to RideWatch only to deliver the emergency SMS. RideWatch does not store them.</p>}
   </div>;
 }

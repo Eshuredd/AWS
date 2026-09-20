@@ -17,6 +17,7 @@ export async function mockApp(page: Page, expired = false) {
   let updates = 0;
   let ride: Record<string, unknown> = {};
   let shareRevoked = false;
+  const sosRequests: unknown[] = [];
   const fare = { estimate_id: "fare-1", supported: true, currency: "INR", official_meter: { minimum: 104, maximum: 104, source: "Telangana", effective_from: "2014-02-14", night_applied: false }, typical_reported: null };
   let routeQuote: Record<string, unknown>;
   await page.route("**/api/**", async handler => {
@@ -34,6 +35,10 @@ export async function mockApp(page: Page, expired = false) {
       expect(request.postDataJSON().fare_estimate_id).toBe("fare-1");
       ride = { ...request.postDataJSON(), id: "ride-1", status: "ACTIVE", started_at: new Date().toISOString(), ended_at: null, expected_route: routeQuote, fare_estimate: fare };
       body = ride;
+    } else if (path.endsWith("/sos") && request.method() === "POST") {
+      sosRequests.push(request.postDataJSON());
+      body = { token: "sos-secret-token", expires_at: new Date(Date.now() + 86400000).toISOString(),
+        requested: request.postDataJSON().phone_numbers.length, sent: request.postDataJSON().phone_numbers.length, failed: 0 };
     } else if (path.endsWith("/share") && request.method() === "POST") {
       shareRevoked = false; body = { token: "secret-token", expires_at: new Date(Date.now() + 86400000).toISOString() };
     } else if (path === "/api/share/secret-token" && request.method() === "DELETE") {
@@ -55,7 +60,7 @@ export async function mockApp(page: Page, expired = false) {
     else body = ride;
     await handler.fulfill({ json: body });
   });
-  return { routes: () => routes, updates: () => updates };
+  return { routes: () => routes, updates: () => updates, sosRequests };
 }
 
 export async function startRide(page: Page) {

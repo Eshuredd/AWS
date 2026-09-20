@@ -429,6 +429,8 @@ dt { font-size: 0.76rem; line-height: 1.35; color: var(--muted); }
 .emergency-dialog > .support { margin: 10px 0 18px; }
 .emergency-dialog > button, .emergency-dialog > a { margin-top: 10px; }
 .emergency-call { background: var(--danger); border-color: var(--danger); }
+.sos-send { background: #9d241c; border-color: #9d241c; letter-spacing: .04em; }
+.emergency-call-promoted { box-shadow: 0 0 0 4px rgb(157 36 28 / 14%); }
 .emergency-contacts { display: grid; gap: 10px; margin: 20px 0 8px; }
 .emergency-contact { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .emergency-contact > span:last-child { display: flex; gap: 7px; }

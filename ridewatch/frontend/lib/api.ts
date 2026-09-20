@@ -19,7 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       : "This ride could not be found. Check the ride link and try again.");
     if (response.status === 503) {
       const body = await response.json();
-      const allowed = ["Destination search is temporarily unavailable", "Unable to calculate this route"];
+      const allowed = ["Destination search is temporarily unavailable", "Unable to calculate this route", "Automatic SOS messaging is not configured."];
       throw new Error(allowed.includes(body.detail) ? body.detail : "RideWatch is temporarily unavailable. Please try again.");
     }
     if (response.status === 409) {
@@ -91,6 +91,10 @@ export type SharedRide = Omit<Monitoring, "ride_id" | "distance_from_route_m"> &
 export const sendLocation = (id: string, data: Coordinates & { accuracy_m: number }, signal: AbortSignal) => request<Monitoring>(`/api/rides/${encodeURIComponent(id)}/locations`, { method: "POST", body: JSON.stringify(data), signal });
 export const getMonitoring = (id: string, signal: AbortSignal) => request<Monitoring>(`/api/rides/${encodeURIComponent(id)}/monitoring`, { signal });
 export const createShare = (id: string) => request<ShareCreated>(`/api/rides/${encodeURIComponent(id)}/share`, { method: "POST" });
+export type SosResult = ShareCreated & { requested: number; sent: number; failed: number };
+export const sendSos = (id: string, requestId: string, phoneNumbers: string[]) => request<SosResult>(`/api/rides/${encodeURIComponent(id)}/sos`, {
+  method: "POST", body: JSON.stringify({ request_id: requestId, phone_numbers: phoneNumbers }),
+});
 export const getSharedRide = (token: string, signal?: AbortSignal) => request<SharedRide>(`/api/share/${encodeURIComponent(token)}`, { signal });
 export const revokeShare = (token: string) => request<void>(`/api/share/${encodeURIComponent(token)}`, { method: "DELETE" });
 export const reportFare = (id: string, fare_paid: number) => request<{ ride_id: string; fare_paid: number; reported_at: string }>(`/api/rides/${encodeURIComponent(id)}/fare-report`, { method: "POST", body: JSON.stringify({ fare_paid }) });

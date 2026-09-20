@@ -14,12 +14,14 @@ from app.models.fare_report import FareReport
 from app.models.quotes import RouteQuote, FareQuote
 from app.models.monitoring import MonitoringState
 from app.models.share import ShareSession
+from app.models.sos import SosDispatch
 from app.schemas.fare import DropLocation
 from app.repositories.ride_repository import RideRepository
 from app.repositories.fare_report_repository import FareReportRepository, DuplicateFareReport
 from app.repositories.quote_repository import RouteQuoteRepository, FareQuoteRepository
 from app.repositories.monitoring_repository import MonitoringStateRepository
 from app.repositories.share_repository import ShareSessionRepository
+from app.repositories.sos_repository import SosDispatchRepository
 from app.repositories.errors import StorageUnavailable, WriteConflict, RideNotActive
 
 
@@ -257,3 +259,27 @@ class DynamoDBShareSessionRepository(ShareSessionRepository):
                         Item=model_item(f"share#{token_hash}", "SHARE_SESSION", revoked,
                                         ttl=int(revoked.expires_at.timestamp())))
         return revoked
+
+
+class DynamoDBSosDispatchRepository(SosDispatchRepository):
+    RETENTION_SECONDS = 300
+
+    def __init__(self, store):
+        self.store = store
+
+    def get(self, request_id):
+        return self.store.get(f"sos#{request_id}", SosDispatch)
+
+    def claim(self, request_id, dispatch):
+        try:
+            self.store.insert(model_item(f"sos#{request_id}", "SOS_DISPATCH", dispatch,
+                                         ttl=int(dispatch.created_at.timestamp()) + self.RETENTION_SECONDS))
+            return True
+        except WriteConflict:
+            return False
+
+    def complete(self, request_id, dispatch):
+        self.store.call("put_item", TableName=self.store.table_name,
+                        Item=model_item(f"sos#{request_id}", "SOS_DISPATCH", dispatch,
+                                        ttl=int(dispatch.created_at.timestamp()) + self.RETENTION_SECONDS))
+        return dispatch

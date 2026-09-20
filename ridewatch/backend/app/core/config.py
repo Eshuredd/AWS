@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     aws_pager: str = ""
     location_provider: Literal["aws"] = "aws"
     cors_origins: list[str] = Field(default=["http://localhost:3000"], min_length=1)
+    sms_provider: Literal["disabled", "aws"] = "disabled"
+    sms_dry_run: bool = False
+    public_app_url: str = "http://localhost:3000"
+    sms_origination_identity: str | None = None
+    sms_configuration_set: str | None = None
+    sms_india_entity_id: str | None = None
+    sms_india_template_id: str | None = None
     model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[2] / ".env", env_file_encoding="utf-8", extra="ignore")
 
     def __init__(self, **values):
@@ -35,10 +42,23 @@ class Settings(BaseSettings):
             result.append(origin.rstrip("/"))
         return result
 
+    @field_validator("public_app_url")
+    @classmethod
+    def exact_public_origin(cls, origin):
+        parsed = urlsplit(origin)
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or
+                parsed.password or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+            raise ValueError("PUBLIC_APP_URL must be an exact HTTP(S) origin without a path")
+        return origin.rstrip("/")
+
     @model_validator(mode="after")
     def require_table(self):
         if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") and self.storage_backend != "dynamodb":
             raise ValueError("Lambda requires STORAGE_BACKEND=dynamodb")
         if self.storage_backend == "dynamodb" and not self.dynamodb_table_name:
             raise ValueError("DYNAMODB_TABLE_NAME is required for DynamoDB storage")
+        if bool(self.sms_india_entity_id) != bool(self.sms_india_template_id):
+            raise ValueError("SMS_INDIA_ENTITY_ID and SMS_INDIA_TEMPLATE_ID must be configured together")
+        if self.sms_provider == "aws" and urlsplit(self.public_app_url).scheme != "https":
+            raise ValueError("PUBLIC_APP_URL must be HTTPS when SMS_PROVIDER=aws")
         return self

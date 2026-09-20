@@ -164,7 +164,11 @@ Later increments include authentication, OCR, provider-backed emergency escalati
 
 ## Emergency assistance and private live sharing
 
-Active rides offer a user-initiated emergency panel with `tel:112`, Web Share/copy fallback, and SMS or WhatsApp handoff for up to three trusted contacts. RideWatch never places calls or sends messages automatically. Trusted-contact names and phone numbers stay in versioned browser `localStorage` and are never sent to the backend.
+Active rides offer a user-initiated emergency panel with `tel:112`, Web Share/copy fallback, one-tap SMS broadcasting, and manual WhatsApp handoff for up to three trusted contacts. Calls remain manual. Trusted-contact names and phone numbers stay in versioned browser `localStorage` until the user confirms **Send SOS**. That request sends only the phone numbers needed for the current dispatch; the backend does not persist or log them.
+
+Automatic SMS is off by default. Set `SMS_PROVIDER=aws`, `PUBLIC_APP_URL` to the exact HTTPS Amplify origin, and configure the AWS End User Messaging origination identity or other account-level sending setup required for the destination countries. `SMS_DRY_RUN=true` passes AWS dry-run mode through without changing application behavior. `SMS_ORIGINATION_IDENTITY` and `SMS_CONFIGURATION_SET` are optional. For India, configure `SMS_INDIA_ENTITY_ID` and `SMS_INDIA_TEMPLATE_ID` together; startup rejects an incomplete pair. The runtime role needs only `sms-voice:SendTextMessage` for SMS delivery in addition to the existing permissions.
+
+`POST /api/rides/{ride_id}/sos` accepts one client-generated UUID and one to three unique E.164 phone numbers. Each request creates a live-share link and sends a transactional message independently to every number. A five-minute `SOS_DISPATCH` idempotency record stores only the request ID, ride ID, counts, creation time, and DynamoDB TTL. It never stores phone numbers, contact names, or message bodies. Repeating the UUID does not send the messages again. Responses report requested, sent, and failed counts so partial delivery remains visible.
 
 Live sharing creates a random 256-bit bearer token. DynamoDB stores only its SHA-256 hash in `pk=share#<hash>`, the ride ID, creation/expiry/revocation timestamps, entity type, and `ttl`; links expire within 24 hours and completed rides have a one-hour grace period. The monitoring item stores only the latest accepted latitude, longitude, accuracy, and receipt time, replacing it on each accepted update. Completion deletes monitoring state, so no GPS trail or post-ride live location is retained.
 
@@ -360,13 +364,13 @@ Route distance is the minimum distance to **segments**, not vertices, of the act
 
 The UI uses one `navigator.geolocation.watchPosition` with high accuracy, maximumAge=5000 and timeout=10000, and permits only one location request in flight. It polls aggregate monitoring every 10 seconds so delay and stale readings remain visible when GPS is silent; this does not call AWS. Permission denial, unsupported browsers, timeout, poor signal and backend errors leave the ride active and offer restart. Ending a ride first unmounts the watcher and aborts pending sends; completion failure restarts monitoring. Existing bounded GPS drop capture, destination fallback and optional fare reporting remain intact. Navigating away also clears the watcher.
 
-Keep the active page open, with location permission enabled, over localhost or HTTPS. Mobile browsers may suspend GPS in the background or when the screen locks. This is not background tracking and not an emergency guarantee. There is no SOS, calling, push notification, trusted-contact integration or automatic rerouting. A map visualization is future work; geometry is available for it.
+Keep the active page open, with location permission enabled, over localhost or HTTPS. Mobile browsers may suspend GPS in the background or when the screen locks. This is not background tracking and not an emergency guarantee. SOS SMS delivery depends on the configured AWS End User Messaging account and destination rules; calling and WhatsApp remain manual. There is no push notification or automatic rerouting. A map visualization is future work; geometry is available for it.
 
 ### Privacy and storage
 
 Quotes, ride snapshots and minimal monitoring state use the selected storage backend. Memory mode loses all data on restart. DynamoDB mode persists ride endpoints/expected geometry, fare reports, quotes and one stop anchor plus aggregate monitoring/counters/timestamps. The unused recent-sample buffer has been removed. There is no GPS trail, per-sample item or history endpoint. Monitoring is deleted on completion and inaccessible for completed rides. Coordinates are not logged; DynamoDB receives only the documented persistent records, and Amazon Location receives necessary search/routing coordinates. The existing ride-detail API still exposes pickup/destination to anyone with a ride ID: this unauthenticated prototype is not production access control.
 
-Production requires authentication/authorization, explicit consent, retention rules, encryption, access controls and deletion policies. Deployment, SOS and trusted contacts remain future work.
+Production requires authentication/authorization, explicit consent, retention rules, encryption, access controls and deletion policies. Configure AWS End User Messaging registrations, origination identity and the exact public Amplify origin before enabling automatic SMS.
 
 ### Repeatable offline verification
 

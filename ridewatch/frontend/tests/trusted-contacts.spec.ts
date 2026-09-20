@@ -42,7 +42,7 @@ test("dedicated page handles empty, add, reload, edit, and remove", async ({ pag
   await expect(page.getByText("Asha")).toBeVisible();
   await page.getByRole("listitem").getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("heading", { name: "No trusted contacts yet." })).toBeVisible();
-  await expect(page.getByText("RideWatch never sends them to the server.")).toBeVisible();
+  await expect(page.getByText(/selected phone numbers are sent securely to RideWatch only to deliver the emergency SMS/)).toBeVisible();
 });
 
 test("dedicated page enforces three contacts and recovers malformed storage", async ({ page }) => {
@@ -67,7 +67,8 @@ test("SOS reads contacts created on the dedicated page", async ({ page }) => {
   await page.getByRole("button", { name: "Get help / SOS" }).click();
   const dialog = page.getByRole("dialog", { name: "Emergency assistance" });
   await expect(dialog.getByText("Alice")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "SMS" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "SEND SOS" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Open WhatsApp" })).toBeVisible();
 });
 
 test("zero-contact SOS links directly to trusted contacts", async ({ page }) => {
