@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Icon } from "@/components/ui";
 import Link from "next/link";
 import HeaderNav from "@/components/header-nav";
+import RecentRideRecorder from "@/components/recent-ride-recorder";
 import "./globals.css";
+import "./map-history.css";
 
 export const metadata: Metadata = {
   title: "RideWatch | Know your ride",
@@ -21,6 +23,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <a className="skip-link" href="#main">Skip to content</a>
+        <RecentRideRecorder />
         <div className="app-shell">
           <header className="app-header">
             <Link href="/" className="brand" aria-label="RideWatch home">
